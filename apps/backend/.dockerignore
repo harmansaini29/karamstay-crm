@@ -1,0 +1,35 @@
+# Version control
+.git/
+.gitignore
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Tests (not needed in the production image)
+tests/
+
+# Environment files (secrets) — keep .env.example so it's available as docs
+.env
+.env.*
+!.env.example
+
+# Docker
+Dockerfile
+.dockerignore
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Docs
+README.md

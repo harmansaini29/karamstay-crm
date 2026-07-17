@@ -1,0 +1,101 @@
+# Copy this file to prod.tfvars (gitignored) and fill in real values before
+# running `terraform plan -var-file=environments/prod.tfvars`.
+#
+# This file is committed as a template only — it contains no real secrets.
+# Nothing marked below is auto-applied; you run terraform yourself with your
+# own AWS credentials. See ../../runbook.md for the full walkthrough.
+
+########################################
+# Core / naming
+########################################
+
+aws_region  = "ap-south-1" # Mumbai — closest region to KaramStay's userbase
+app_name    = "karamstay"
+environment = "prod"
+
+########################################
+# Custom domain / TLS
+# App Runner provisions + validates its own ACM certificate for this domain;
+# you don't need a certificate ARN, just a domain you control DNS for.
+########################################
+
+domain_name          = "api.karamstay.com" # REPLACE ME with your real domain
+enable_www_subdomain = false
+
+########################################
+# Alerting / budgets
+########################################
+
+alert_email                 = "billing-alerts@karamstay.com" # REPLACE ME
+budget_threshold_low_usd    = 25
+budget_threshold_medium_usd = 50
+budget_threshold_high_usd   = 75
+monthly_budget_limit_usd    = 100
+
+########################################
+# WAF
+########################################
+
+waf_rate_limit_requests      = 700 # per-IP requests allowed...
+waf_rate_limit_window_seconds = 300 # ...within this many seconds (5 min)
+
+########################################
+# Networking
+########################################
+
+vpc_cidr             = "10.20.0.0/16"
+private_subnet_cidrs = ["10.20.1.0/24", "10.20.2.0/24"]
+
+########################################
+# Database (RDS Postgres)
+########################################
+
+db_instance_class         = "db.t4g.small"
+db_engine_version         = "16"
+db_allocated_storage      = 30
+db_max_allocated_storage  = 200
+db_backup_retention_period = 7
+db_name                   = "karamstay"
+db_username               = "karamstay"
+# NOTE: there is no db_password variable — Terraform generates a random
+# master password (random_password.db) and writes the full DATABASE_URL
+# straight into SSM. You never need to type or remember it.
+
+########################################
+# App Runner (compute)
+########################################
+
+apprunner_cpu             = "512"  # 0.5 vCPU
+apprunner_memory          = "1024" # 1 GB
+apprunner_min_size        = 1
+apprunner_max_size        = 4
+apprunner_max_concurrency = 100
+ecr_image_tag             = "latest" # bootstrap tag; CI/CD moves the service onto SHA tags afterwards
+
+########################################
+# Observability
+########################################
+
+cloudwatch_log_retention_days = 30
+
+########################################
+# Application configuration (non-secret)
+# Mirrors apps/backend/.env.example. Adjust to match your real CORS origins
+# etc. Secrets (DATABASE_URL, JWT_SECRET_KEY, WhatsApp token, Firebase JSON)
+# are NOT here — they live in SSM, see runbook.md.
+########################################
+
+app_display_name               = "KaramStay"
+jwt_algorithm                   = "HS256"
+access_token_expire_minutes     = 15
+refresh_token_expire_days       = 30
+backend_cors_origins            = "[\"https://app.karamstay.com\"]" # REPLACE ME with your real frontend origin(s)
+whatsapp_api_base_url            = "https://graph.facebook.com/v20.0"
+s3_presigned_url_expire_seconds = 300
+rate_limit_enabled               = true
+otp_expire_minutes               = 10
+otp_length                       = 6
+late_fee_grace_days              = 3
+late_fee_percent_per_day         = "1.0"
+invoice_generation_day           = 1
+app_log_level                    = "INFO"
