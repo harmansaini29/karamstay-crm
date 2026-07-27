@@ -1,14 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  SafeAreaView,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useAuth } from './AuthContext';
 import { useTheme } from '../../theme/ThemeProvider';
 import { Card } from '../../components/Card';
@@ -16,6 +7,8 @@ import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
 import { Toast } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface OtpScreenProps {
   route: any;
@@ -101,6 +94,7 @@ export const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
@@ -173,6 +167,8 @@ export const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
           </Card>
         </ScrollView>
       </KeyboardAvoidingView>
+    
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

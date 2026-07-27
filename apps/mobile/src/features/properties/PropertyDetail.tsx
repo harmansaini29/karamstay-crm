@@ -1,14 +1,5 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  Alert,
-  Linking,
-} from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, Linking } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -19,6 +10,8 @@ import { Badge } from '../../components/Badge';
 import { useAuth } from '../auth/AuthContext';
 import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface Property {
   id: number;
@@ -49,6 +42,7 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isOwner = user?.role?.name === 'owner';
+  const [unitFilter, setUnitFilter] = useState<'all' | 'vacant' | 'occupied'>('all');
 
   // Get details
   const {
@@ -121,6 +115,11 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
     }).format(amount);
   };
 
+  const filteredUnits = units.filter((u) => {
+    if (unitFilter === 'all') return true;
+    return u.status === unitFilter;
+  });
+
   const renderUnitItem = ({ item }: { item: Unit }) => (
     <TouchableOpacity
       activeOpacity={0.7}
@@ -145,6 +144,7 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       {/* Header Navigation */}
       <View style={styles.header}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
@@ -167,7 +167,7 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
       </View>
 
       <FlatList
-        data={units}
+        data={filteredUnits}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderUnitItem}
         contentContainerStyle={{ padding: space.lg }}
@@ -221,7 +221,7 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
               </Text>
             </View>
 
-            {/* Units list header */}
+            {/* Unit filter tabs */}
             <View style={styles.unitsHeader}>
               <Text style={[styles.unitsTitle, { color: colors.text, fontSize: font.h3.fontSize }]}>
                 Units ({units.length})
@@ -234,6 +234,25 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
                 </TouchableOpacity>
               ) : null}
             </View>
+            <View style={{ flexDirection: 'row', marginBottom: 12 }}>
+              {(['all', 'vacant', 'occupied'] as const).map((filter) => (
+                <TouchableOpacity
+                  key={filter}
+                  onPress={() => setUnitFilter(filter)}
+                  style={[
+                    styles.filterTab,
+                    {
+                      backgroundColor: unitFilter === filter ? colors.primary + '15' : 'transparent',
+                      borderColor: unitFilter === filter ? colors.primary : 'transparent',
+                    },
+                  ]}
+                >
+                  <Text style={{ color: unitFilter === filter ? colors.primary : colors.textMuted, fontWeight: '600', textTransform: 'capitalize', fontSize: font.caption.fontSize }}>
+                    {filter}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         }
         ListEmptyComponent={
@@ -244,6 +263,8 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
         refreshing={isUnitsLoading}
         onRefresh={refetchUnits}
       />
+    
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };
@@ -275,10 +296,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   unitsTitle: {
     fontWeight: 'bold',
+  },
+  filterTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderRadius: 6,
+    marginRight: 8,
   },
   unitCard: {
     borderWidth: 1,

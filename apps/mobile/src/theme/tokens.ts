@@ -52,15 +52,14 @@ export const radius = { xs: 4, sm: 8, md: 14, lg: 20, xl: 32, full: 9999 } as co
 export const space = { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 24, '2xl': 32, '3xl': 48 } as const;
 
 // Type scale tuned to Airbnb Cereal proportions (modest display weights, 16px body).
-// fontFamily is left to the system stack until Inter/Cereal is bundled via expo-font.
 export const font = {
-  h1: { fontSize: 26, lineHeight: 32, fontWeight: '700' as const, letterSpacing: -0.3 },
-  h2: { fontSize: 22, lineHeight: 28, fontWeight: '600' as const, letterSpacing: -0.2 },
-  h3: { fontSize: 18, lineHeight: 24, fontWeight: '600' as const },
-  body: { fontSize: 16, lineHeight: 24, fontWeight: '400' as const },
-  bodyStrong: { fontSize: 16, lineHeight: 24, fontWeight: '600' as const },
-  caption: { fontSize: 14, lineHeight: 20, fontWeight: '400' as const },
-  overline: { fontSize: 11, lineHeight: 16, fontWeight: '700' as const, letterSpacing: 0.4 },
+  h1: { fontSize: 26, lineHeight: 32, fontWeight: '700' as const, letterSpacing: -0.3, fontFamily: 'Inter_700Bold' },
+  h2: { fontSize: 22, lineHeight: 28, fontWeight: '600' as const, letterSpacing: -0.2, fontFamily: 'Inter_600SemiBold' },
+  h3: { fontSize: 18, lineHeight: 24, fontWeight: '600' as const, fontFamily: 'Inter_600SemiBold' },
+  body: { fontSize: 16, lineHeight: 24, fontWeight: '400' as const, fontFamily: 'Inter_400Regular' },
+  bodyStrong: { fontSize: 16, lineHeight: 24, fontWeight: '600' as const, fontFamily: 'Inter_600SemiBold' },
+  caption: { fontSize: 14, lineHeight: 20, fontWeight: '400' as const, fontFamily: 'Inter_400Regular' },
+  overline: { fontSize: 11, lineHeight: 16, fontWeight: '700' as const, letterSpacing: 0.4, fontFamily: 'Inter_700Bold' },
 } as const;
 
 // Airbnb caps elevation at essentially one subtle tier; depth comes from hairlines,

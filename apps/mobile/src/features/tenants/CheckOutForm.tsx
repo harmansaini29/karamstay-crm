@@ -1,13 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -16,6 +8,8 @@ import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
 import { Toast, LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface LedgerEntry {
   id: number;
@@ -176,6 +170,7 @@ export const CheckOutForm: React.FC<{ route: any; navigation: any }> = ({ route,
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
       
       <View style={styles.header}>
@@ -259,6 +254,8 @@ export const CheckOutForm: React.FC<{ route: any; navigation: any }> = ({ route,
           style={{ marginTop: space.lg }}
         />
       </ScrollView>
+    
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

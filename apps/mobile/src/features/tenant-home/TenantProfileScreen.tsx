@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
-  ScrollView,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -15,6 +8,8 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface TenantProfile {
   id: number;
@@ -61,6 +56,7 @@ export const TenantProfileScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.subtitle, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>
@@ -153,6 +149,8 @@ export const TenantProfileScreen: React.FC = () => {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+    
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

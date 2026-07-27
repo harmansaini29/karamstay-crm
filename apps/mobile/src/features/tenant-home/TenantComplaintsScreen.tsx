@@ -1,14 +1,5 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
-  Modal,
-  ScrollView,
-} from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -18,6 +9,8 @@ import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Toast, LoadingSkeleton, ErrorState, EmptyState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface Ticket {
   id: number;
@@ -174,6 +167,7 @@ export const TenantComplaintsScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
       
       {/* Header */}
@@ -308,6 +302,8 @@ export const TenantComplaintsScreen: React.FC = () => {
           </View>
         </Modal>
       ) : null}
+    
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

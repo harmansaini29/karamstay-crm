@@ -1,14 +1,5 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  ScrollView,
-  Switch,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity, Alert } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -18,6 +9,8 @@ import { color as semanticColor } from '../../theme/tokens';
 import { Button } from '../../components/Button';
 import { apiClient, parseApiError } from '../../api/client';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 const consentSchema = z.object({
   primaryConsent: z.boolean().refine((val) => val === true, {
@@ -78,6 +71,7 @@ export const ConsentGateScreen: React.FC<{ navigation: any }> = ({ navigation })
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <ScrollView contentContainerStyle={{ padding: space.lg }}>
         <View style={styles.header}>
           <View style={[styles.iconCircle, { backgroundColor: colors.primary + '15' }]}>
@@ -216,6 +210,8 @@ export const ConsentGateScreen: React.FC<{ navigation: any }> = ({ navigation })
           </Text>
         </TouchableOpacity>
       </ScrollView>
+    
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

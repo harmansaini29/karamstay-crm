@@ -1,16 +1,11 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
-  ScrollView,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../../theme/ThemeProvider';
 import { Card } from '../../components/Card';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 export const MoreHome: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space, radius } = useTheme();
@@ -62,6 +57,7 @@ export const MoreHome: React.FC<{ navigation: any }> = ({ navigation }) => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <ScrollView contentContainerStyle={{ padding: space.lg }}>
         {/* Profile Card */}
         <Card style={[styles.profileCard, { borderColor: colors.border }]}>
@@ -121,6 +117,8 @@ export const MoreHome: React.FC<{ navigation: any }> = ({ navigation }) => {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+    
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

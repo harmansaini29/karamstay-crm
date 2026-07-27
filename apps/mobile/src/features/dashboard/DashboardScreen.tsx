@@ -5,9 +5,9 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -16,6 +16,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { LoadingSkeleton, ErrorState } from '../../components/States';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Property {
@@ -140,6 +141,47 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
     enabled: isManager && unitsList.length > 0,
   });
 
+  // Owner / Accountant inventory queries (mirrors manager, gated by !isManager)
+  const {
+    data: ownerUnitsList = [],
+    refetch: refetchOwnerUnits,
+  } = useQuery<any[]>({
+    queryKey: ['owner-inventory-units', selectedPropertyId, properties.length],
+    queryFn: async () => {
+      const allUnits: any[] = [];
+      const targetProps = selectedPropertyId
+        ? properties.filter((p) => p.id === selectedPropertyId)
+        : properties;
+      for (const p of targetProps) {
+        try {
+          const res = await apiClient.get(`/properties/${p.id}/units`);
+          allUnits.push(...res.data);
+        } catch (e) {}
+      }
+      return allUnits;
+    },
+    enabled: !isManager && properties.length > 0,
+  });
+
+  const {
+    data: ownerBedsList = [],
+    refetch: refetchOwnerBeds,
+  } = useQuery<any[]>({
+    queryKey: ['owner-inventory-beds', ownerUnitsList.length, selectedPropertyId],
+    queryFn: async () => {
+      const allBeds: any[] = [];
+      const multiUnits = ownerUnitsList.filter((u) => (u.capacity || 1) > 1);
+      for (const u of multiUnits) {
+        try {
+          const res = await apiClient.get(`/units/${u.id}/beds`);
+          allBeds.push(...res.data);
+        } catch (e) {}
+      }
+      return allBeds;
+    },
+    enabled: !isManager && ownerUnitsList.length > 0,
+  });
+
   const { data: notifications = [], refetch: refetchNotifications } = useQuery<NotificationItem[]>({
     queryKey: ['notifications', 'recent'],
     queryFn: async () => {
@@ -154,7 +196,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
     if (isManager) {
       await Promise.all([refetchTickets(), refetchUnits(), refetchBeds(), refetchNotifications()]);
     } else {
-      await Promise.all([refetchAnalytics(), refetchNotifications()]);
+      await Promise.all([refetchAnalytics(), refetchOwnerUnits(), refetchOwnerBeds(), refetchNotifications()]);
     }
     setRefreshing(false);
   };
@@ -176,11 +218,17 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
     properties.find((p) => p.id === selectedPropertyId)?.name || 'All Properties';
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount);
+    try {
+      if (typeof Intl !== 'undefined' && typeof Intl.NumberFormat === 'function') {
+        return new Intl.NumberFormat('en-IN', {
+          style: 'currency',
+          currency: 'INR',
+          maximumFractionDigits: 0,
+        }).format(amount);
+      }
+    } catch (e) {}
+    // Fallback if Intl is broken on device
+    return '₹' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   };
 
   // Manager metrics computing
@@ -200,6 +248,13 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
 
   const vacantBeds = bedsList.filter(b => b.status === 'vacant').length;
   const occupiedBeds = bedsList.filter(b => b.status === 'occupied').length;
+
+  // Owner / Accountant bed inventory computations
+  const ownerVacantFlats = ownerUnitsList.filter((u) => (u.capacity || 1) === 1 && u.status === 'vacant').length;
+  const ownerOccupiedFlats = ownerUnitsList.filter((u) => (u.capacity || 1) === 1 && u.status === 'occupied').length;
+  const ownerTotalBeds = ownerBedsList.length;
+  const ownerVacantBeds = ownerBedsList.filter((b) => b.status === 'vacant').length;
+  const ownerOccupiedBeds = ownerBedsList.filter((b) => b.status === 'occupied').length;
 
   const statTiles = [
     {
@@ -234,14 +289,15 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
-      <ScrollView
-        contentContainerStyle={{ padding: space.lg }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
-        }
-      >
-        {/* Header and Picker */}
-        <View style={styles.header}>
+      <ResponsiveContainer>
+        <ScrollView
+          contentContainerStyle={{ padding: space.lg }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+          }
+        >
+          {/* Header and Picker */}
+          <View style={styles.header}>
           <View>
             <Text style={[styles.welcomeText, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>
               {isManager ? 'MANAGER DASHBOARD' : 'KARAMSTAY OWNER'}
@@ -259,10 +315,10 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
             </Text>
             <Ionicons name="chevron-down" size={14} color={colors.text} />
           </TouchableOpacity>
-        </View>
+          </View>
 
-        {/* Dropdown list */}
-        {showPropertyPicker ? (
+          {/* Dropdown list */}
+          {showPropertyPicker ? (
           <Card style={{ marginBottom: space.md, padding: space.sm }}>
             <TouchableOpacity
               style={[styles.pickerItem, { borderBottomColor: colors.border }]}
@@ -290,9 +346,9 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
               </TouchableOpacity>
             ))}
           </Card>
-        ) : null}
+          ) : null}
 
-        {isManager ? (
+          {isManager ? (
           // MANAGER RESTRICTED LAYOUT
           <View>
             {/* Maintenance Tickets Section */}
@@ -385,7 +441,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
               </View>
             </Card>
           </View>
-        ) : (
+          ) : (
           // OWNER/ACCOUNTANT FULL LAYOUT
           <View>
             {/* Stats Grid */}
@@ -409,6 +465,52 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* Bed Inventory Overview — Owner/Accountant */}
+            <Text style={[styles.sectionTitle, { color: colors.text, fontSize: font.h3.fontSize, marginTop: space.sm }]}>
+              Bed & Unit Inventory
+            </Text>
+            <Card style={{ borderWidth: 1, padding: 16, marginBottom: 16 }}>
+              {/* Single Flats */}
+              <View style={styles.inventoryRow}>
+                <View style={styles.inventoryItemLabel}>
+                  <Ionicons name="business-outline" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.body.fontSize }}>Single Flats</Text>
+                </View>
+                <View style={{ flexDirection: 'row' }}>
+                  <View style={[styles.inventoryBadge, { backgroundColor: semanticColor.success.bg, marginRight: 8 }]}>
+                    <Text style={{ color: semanticColor.success.fg, fontWeight: 'bold', fontSize: 12 }}>{ownerVacantFlats} Vacant</Text>
+                  </View>
+                  <View style={[styles.inventoryBadge, { backgroundColor: semanticColor.info.bg }]}>
+                    <Text style={{ color: semanticColor.info.fg, fontWeight: 'bold', fontSize: 12 }}>{ownerOccupiedFlats} Occupied</Text>
+                  </View>
+                </View>
+              </View>
+
+              {ownerTotalBeds > 0 ? (
+                <>
+                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                  {/* Shared Beds */}
+                  <View style={styles.inventoryRow}>
+                    <View style={styles.inventoryItemLabel}>
+                      <Ionicons name="bed-outline" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+                      <View>
+                        <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.body.fontSize }}>Shared Beds</Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 11 }}>{ownerTotalBeds} total beds</Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row' }}>
+                      <View style={[styles.inventoryBadge, { backgroundColor: semanticColor.success.bg, marginRight: 8 }]}>
+                        <Text style={{ color: semanticColor.success.fg, fontWeight: 'bold', fontSize: 12 }}>{ownerVacantBeds} Vacant</Text>
+                      </View>
+                      <View style={[styles.inventoryBadge, { backgroundColor: semanticColor.info.bg }]}>
+                        <Text style={{ color: semanticColor.info.fg, fontWeight: 'bold', fontSize: 12 }}>{ownerOccupiedBeds} Occupied</Text>
+                      </View>
+                    </View>
+                  </View>
+                </>
+              ) : null}
+            </Card>
 
             {/* Quick Actions Row */}
             <Text style={[styles.sectionTitle, { color: colors.text, fontSize: font.h3.fontSize, marginTop: space.sm }]}>
@@ -466,10 +568,10 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
               </View>
             </Card>
           </View>
-        )}
+          )}
 
-        {/* Notifications Preview */}
-        <View style={styles.sectionHeader}>
+          {/* Notifications Preview */}
+          <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text, fontSize: font.h3.fontSize, marginBottom: 0 }]}>
             Recent Notifications
           </Text>
@@ -481,13 +583,13 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
               See all
             </Text>
           </TouchableOpacity>
-        </View>
+          </View>
 
-        {notifications.length === 0 ? (
+          {notifications.length === 0 ? (
           <Card style={{ padding: space.md, alignItems: 'center' }}>
             <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>No recent alerts</Text>
           </Card>
-        ) : (
+          ) : (
           notifications.map((notif) => (
             <Card key={notif.id} style={[styles.notifCard, { marginBottom: space.sm, padding: space.md, borderColor: colors.border }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.xs }}>
@@ -501,8 +603,9 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
               </Text>
             </Card>
           ))
-        )}
-      </ScrollView>
+          )}
+        </ScrollView>
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

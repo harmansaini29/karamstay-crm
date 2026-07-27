@@ -1,27 +1,25 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  SafeAreaView,
-  RefreshControl,
-} from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
+import { color as semanticColor } from '../../theme/tokens';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { LoadingSkeleton } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../auth/AuthContext';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 export const TenantHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space } = useTheme();
   const { user } = useAuth();
 
   const [refreshing, setRefreshing] = useState(false);
+
+
 
   // 1. Fetch tenant tenancy context (GET /tenancies/me)
   const { data: tenancyContext, isLoading: isContextLoading, refetch: refetchContext } = useQuery<any>({
@@ -83,6 +81,7 @@ export const TenantHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <ScrollView
         contentContainerStyle={{ padding: space.lg }}
         refreshControl={
@@ -123,7 +122,7 @@ export const TenantHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
           <Card style={[styles.dueCard, { borderColor: colors.border }]}>
             <View style={styles.dueHeader}>
               <View>
-                <Text style={{ color: '#B45309', fontSize: 11, fontWeight: 'bold' }}>RENT OUTSTANDING</Text>
+              <Text style={{ color: semanticColor.warning.fg, fontSize: 11, fontWeight: 'bold' }}>RENT OUTSTANDING</Text>
                 <Text style={[styles.dueAmount, { color: colors.text, fontSize: font.h1.fontSize }]}>
                   {formatCurrency(Number(activeDueInvoice.amount) + Number(activeDueInvoice.late_fee_amount))}
                 </Text>
@@ -141,12 +140,12 @@ export const TenantHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
             />
           </Card>
         ) : (
-          <Card style={[styles.settledCard, { borderColor: '#10B98120', backgroundColor: '#ECFDF550' }]}>
-            <Ionicons name="checkmark-circle" size={32} color="#10B981" />
-            <Text style={{ color: '#047857', fontWeight: 'bold', fontSize: font.bodyStrong.fontSize, marginTop: space.sm }}>
+        <Card style={[styles.settledCard, { borderColor: semanticColor.success.solid + '20', backgroundColor: semanticColor.success.bg }]}>
+            <Ionicons name="checkmark-circle" size={32} color={semanticColor.success.solid} />
+            <Text style={{ color: semanticColor.success.fg, fontWeight: 'bold', fontSize: font.bodyStrong.fontSize, marginTop: space.sm }}>
               Rent fully paid for this cycle!
             </Text>
-            <Text style={{ color: '#047857', fontSize: font.caption.fontSize, textAlign: 'center', marginTop: 2 }}>
+            <Text style={{ color: semanticColor.success.fg, fontSize: font.caption.fontSize, textAlign: 'center', marginTop: 2 }}>
               No outstanding dues are currently pending.
             </Text>
           </Card>
@@ -177,6 +176,8 @@ export const TenantHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
           ))
         )}
       </ScrollView>
+    
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

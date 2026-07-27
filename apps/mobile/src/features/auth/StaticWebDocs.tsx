@@ -1,14 +1,9 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  ScrollView,
-  TouchableOpacity,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useTheme } from '../../theme/ThemeProvider';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface StaticDocProps {
   navigation: any;
@@ -19,6 +14,7 @@ export const PrivacyPolicyScreen: React.FC<StaticDocProps> = ({ navigation }) =>
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <View style={styles.header}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color={colors.primary} />
@@ -66,6 +62,7 @@ export const PrivacyPolicyScreen: React.FC<StaticDocProps> = ({ navigation }) =>
           If you have any questions, concerns, or complaints regarding how your personal data is handled, please contact our designated Grievance Officer whose details are listed under the Support card in your profile settings.
         </Text>
       </ScrollView>
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };
@@ -75,6 +72,7 @@ export const TermsOfServiceScreen: React.FC<StaticDocProps> = ({ navigation }) =
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <View style={styles.header}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color={colors.primary} />
@@ -122,6 +120,7 @@ export const TermsOfServiceScreen: React.FC<StaticDocProps> = ({ navigation }) =
           Account deletion requests submitted via the Privacy dashboard will be reviewed manually. Deletion cannot be finalized if there are outstanding financial balances or active contract periods that require record preservation under state tax or property laws.
         </Text>
       </ScrollView>
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

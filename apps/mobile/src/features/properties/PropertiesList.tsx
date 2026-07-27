@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -15,6 +15,7 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { useAuth } from '../auth/AuthContext';
 import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Property {
@@ -87,41 +88,43 @@ export const PropertiesList: React.FC<{ navigation: any }> = ({ navigation }) =>
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.subtitle, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>
-            MANAGE PORTFOLIO
-          </Text>
-          <Text style={[styles.titleText, { color: colors.text, fontSize: font.h1.fontSize }]}>
-            Properties
-          </Text>
+      <ResponsiveContainer>
+        <View style={styles.header}>
+          <View>
+            <Text style={[styles.subtitle, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>
+              MANAGE PORTFOLIO
+            </Text>
+            <Text style={[styles.titleText, { color: colors.text, fontSize: font.h1.fontSize }]}>
+              Properties
+            </Text>
+          </View>
+          {isOwner ? (
+            <Button
+              label="Add"
+              onPress={() => navigation.navigate('PropertyForm', {})}
+              size="compact"
+              style={{ width: 80 }}
+            />
+          ) : null}
         </View>
-        {isOwner ? (
-          <Button
-            label="Add"
-            onPress={() => navigation.navigate('PropertyForm', {})}
-            size="compact"
-            style={{ width: 80 }}
-          />
-        ) : null}
-      </View>
 
-      <FlatList
-        data={properties}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderPropertyItem}
-        contentContainerStyle={{ padding: space.lg }}
-        ListEmptyComponent={
-          <EmptyState
-            title="No Properties Found"
-            body="Start by adding your first rental property to get started."
-            ctaLabel={isOwner ? 'Add Property' : undefined}
-            onPress={isOwner ? () => navigation.navigate('PropertyForm', {}) : undefined}
-          />
-        }
-        refreshing={isLoading}
-        onRefresh={refetch}
-      />
+        <FlatList
+          data={properties}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={renderPropertyItem}
+          contentContainerStyle={{ padding: space.lg }}
+          ListEmptyComponent={
+            <EmptyState
+              title="No Properties Found"
+              body="Start by adding your first rental property to get started."
+              ctaLabel={isOwner ? 'Add Property' : undefined}
+              onPress={isOwner ? () => navigation.navigate('PropertyForm', {}) : undefined}
+            />
+          }
+          refreshing={isLoading}
+          onRefresh={refetch}
+        />
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

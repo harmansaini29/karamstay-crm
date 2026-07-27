@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
-  ScrollView,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -15,6 +8,8 @@ import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface TenantProfile {
   id: number;
@@ -49,30 +44,42 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
     },
   });
 
-  // Check if there is an active tenancy for this tenant in our cache or ledger
-  // For the UI, we can fetch all invoices and match. If the tenant has an active tenancy,
-  // we can look up their invoices. Let's fetch invoices.
-  const { data: invoices = [] } = useQuery<any[]>({
-    queryKey: ['invoices'],
+  // Directly resolve the active tenancy for this specific tenant
+  // Uses the tenant_id param so we only get THIS tenant's tenancy (not a random one from invoices)
+  const { data: tenancy } = useQuery<any>({
+    queryKey: ['tenancy-by-tenant', id],
     queryFn: async () => {
-      const res = await apiClient.get('/invoices');
-      return res.data;
-    },
-  });
-
-  // Resolve the tenant's actual tenancy id from their invoices, which each carry a
-  // real `tenancy_id` FK. This is a genuine relational lookup — NOT the old
-  // "tenancy id == tenant id" guess, which broke the moment IDs diverged.
-  const tenancyId: number | undefined = invoices.find((inv) => inv.tenancy_id != null)?.tenancy_id;
-
-  const { data: tenancy } = useQuery({
-    queryKey: ['tenancy', tenancyId],
-    enabled: tenancyId != null,
-    queryFn: async () => {
-      const res = await apiClient.get(`/tenancies/${tenancyId}`);
-      return res.data;
+      try {
+        const res = await apiClient.get(`/tenancies?tenant_id=${id}`);
+        // Mock returns a single tenancy object or {} on 404
+        if (res.data && res.data.id) return res.data;
+        return null;
+      } catch {
+        return null;
+      }
     },
     retry: false,
+    enabled: !!tenant,
+  });
+
+  // Resolve the unit assigned in the tenancy
+  const { data: tenancyUnit } = useQuery<any>({
+    queryKey: ['unit', tenancy?.unit_id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/units/${tenancy!.unit_id}`);
+      return res.data;
+    },
+    enabled: !!tenancy?.unit_id,
+  });
+
+  // Resolve the property of that unit
+  const { data: tenancyProperty } = useQuery<any>({
+    queryKey: ['property', tenancyUnit?.property_id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/properties/${tenancyUnit!.property_id}`);
+      return res.data;
+    },
+    enabled: !!tenancyUnit?.property_id,
   });
 
   if (isLoading) return <LoadingSkeleton variant="detail" />;
@@ -90,10 +97,11 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
     }).format(amount);
   };
 
-  const hasActiveTenancy = tenancy && tenancy.status === 'active';
+  const hasActiveTenancy = tenancy?.status === 'active';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <View style={styles.header}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color={colors.primary} />
@@ -181,7 +189,7 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
               <Badge status="active" />
             </View>
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            
+
             <View style={styles.profileGrid}>
               <View style={styles.gridCol}>
                 <Text style={[styles.label, { color: colors.textMuted }]}>Monthly Rent</Text>
@@ -212,10 +220,48 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
               </View>
             </View>
 
+            {/* Property & Unit Location */}
+            {(tenancyProperty || tenancyUnit) ? (
+              <View style={{ marginTop: space.sm, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: colors.border }}>
+                <Text style={[styles.label, { color: colors.textMuted, marginBottom: 4 }]}>LOCATION</Text>
+                {tenancyProperty ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <Ionicons name="business-outline" size={13} color={colors.textMuted} style={{ marginRight: 5 }} />
+                    <Text style={[styles.val, { color: colors.text }]}>{tenancyProperty.name}</Text>
+                  </View>
+                ) : null}
+                {tenancyUnit ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Ionicons name="home-outline" size={13} color={colors.textMuted} style={{ marginRight: 5 }} />
+                    <Text style={[styles.val, { color: colors.text }]}>
+                      Unit {tenancyUnit.unit_no} · {tenancyUnit.unit_type?.toUpperCase()}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            {/* Assigned Beds */}
+            {Array.isArray(tenancy.bed_ids) && tenancy.bed_ids.length > 0 ? (
+              <View style={{ marginTop: space.sm, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: colors.border }}>
+                <Text style={[styles.label, { color: colors.textMuted, marginBottom: 6 }]}>ASSIGNED BED(S)</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                  {tenancy.bed_ids.map((bid: number) => (
+                    <View
+                      key={bid}
+                      style={{ backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, marginRight: 8, marginBottom: 4 }}
+                    >
+                      <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>Bed #{bid}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
             <View style={[styles.buttonRow, { marginTop: space.md }]}>
               <Button
                 label="Check Ledger"
-                onPress={() => navigation.navigate('Finance', { screen: 'Invoices', params: { tenancyId: tenancy.id } })}
+                onPress={() => navigation.navigate('Finance', { screen: 'Ledger', params: { tenancyId: tenancy.id } })}
                 variant="secondary"
                 style={{ flex: 1, marginRight: space.sm }}
               />
@@ -240,6 +286,8 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
           </Card>
         )}
       </ScrollView>
+
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

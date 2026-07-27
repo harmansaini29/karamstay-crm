@@ -5,7 +5,6 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   Modal,
   ScrollView,
   TextInput,
@@ -20,6 +19,8 @@ import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface Ticket {
   id: number;
@@ -152,11 +153,24 @@ export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) =
     })),
   ];
 
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      try {
+        navigation.navigate('MoreHome');
+      } catch (_) {
+        navigation.navigate('Dashboard');
+      }
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={handleBack}>
           <Ionicons name="arrow-back" size={20} color={colors.primary} />
           <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Back</Text>
         </TouchableOpacity>
@@ -166,12 +180,14 @@ export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) =
         <View style={{ width: 40 }} />
       </View>
 
+
       {/* Filter tabs scroll */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterBar}
-      >
+      <View style={{ height: 48, flexGrow: 0, flexShrink: 0 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterBar}
+        >
         {(['all', 'open', 'in_progress', 'completed', 'closed'] as const).map((filter) => (
           <TouchableOpacity
             key={filter}
@@ -196,14 +212,15 @@ export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) =
             </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+        </ScrollView>
+      </View>
 
       {/* Tickets List */}
       <FlatList
         data={filteredTickets}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderTicketItem}
-        contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.lg }}
+        contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.lg, flexGrow: 1 }}
         ListEmptyComponent={
           <EmptyState
             title="Clean Slate!"
@@ -300,6 +317,7 @@ export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) =
           </View>
         </Modal>
       ) : null}
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

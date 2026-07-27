@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
-  ScrollView,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -14,6 +7,8 @@ import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface Invoice {
   id: number;
@@ -62,6 +57,7 @@ export const InvoiceDetail: React.FC<{ route: any; navigation: any }> = ({ route
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <View style={styles.header}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color={colors.primary} />
@@ -143,6 +139,8 @@ export const InvoiceDetail: React.FC<{ route: any; navigation: any }> = ({ route
           </TouchableOpacity>
         </Card>
       </ScrollView>
+    
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

@@ -1,15 +1,5 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  Alert,
-  Modal,
-  TextInput,
-} from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, Modal, TextInput } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -18,6 +8,8 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface PaymentApprovalItem {
   id: number;
@@ -181,6 +173,7 @@ export const ApprovalsQueueScreen: React.FC<{ navigation: any }> = ({ navigation
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h2.fontSize }]}>
           Payment Approvals
@@ -248,6 +241,8 @@ export const ApprovalsQueueScreen: React.FC<{ navigation: any }> = ({ navigation
           </Card>
         </View>
       </Modal>
+    
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
-} from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -14,6 +7,8 @@ import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface NotificationItem {
   id: number;
@@ -60,6 +55,18 @@ export const NotificationsView: React.FC<{ navigation: any }> = ({ navigation })
     readMutation.mutate(id);
   };
 
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      try {
+        navigation.navigate('MoreHome');
+      } catch (_) {
+        navigation.navigate('Dashboard');
+      }
+    }
+  };
+
   if (isLoading) return <LoadingSkeleton variant="list" />;
   if (isError) return <ErrorState message={parseApiError(error).message} onRetry={refetch} />;
 
@@ -93,9 +100,10 @@ export const NotificationsView: React.FC<{ navigation: any }> = ({ navigation })
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={handleBack}>
           <Ionicons name="arrow-back" size={20} color={colors.primary} />
           <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Back</Text>
         </TouchableOpacity>
@@ -113,12 +121,11 @@ export const NotificationsView: React.FC<{ navigation: any }> = ({ navigation })
         ListEmptyComponent={
           <EmptyState
             title="All Caught Up!"
-            body="No recent automated logs or alerts are currently queued."
+            body="You have no notifications or property broadcasts at this time."
           />
         }
-        refreshing={isLoading}
-        onRefresh={refetch}
       />
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };
@@ -140,7 +147,6 @@ const styles = StyleSheet.create({
   },
   card: {
     borderWidth: 1,
-    padding: 12,
   },
   cardHeader: {
     flexDirection: 'row',

@@ -1,12 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
-} from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import { apiClient, parseApiError } from '../../api/client';
@@ -14,7 +7,10 @@ import { useTheme } from '../../theme/ThemeProvider';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
 import { Toast } from '../../components/States';
+import { MapPinPicker, MapPinResult } from '../../components/MapPinPicker';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface PropertyFormProps {
   route: any;
@@ -39,6 +35,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [isLocating, setIsLocating] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
 
   const [toastMsg, setToastMsg] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
@@ -75,6 +72,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
     }
   }, [property]);
 
+  // GPS quick-fill — gets device location + reverse-geocodes via expo-location
   const handleDropPin = async () => {
     setIsLocating(true);
     try {
@@ -100,21 +98,19 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
 
         if (addressResponse && addressResponse.length > 0) {
           const addr = addressResponse[0];
-          // Pre-populate fields
           const formattedAddress = [
             addr.streetNumber,
             addr.street,
             addr.district,
             addr.subregion,
           ].filter(Boolean).join(', ');
-          
+
           setAddress(formattedAddress || `Dropped Pin: Lat ${lat.toFixed(4)}, Lon ${lon.toFixed(4)}`);
           if (addr.city) setCity(addr.city);
           if (addr.region) setState(addr.region);
           if (addr.postalCode) setPincode(addr.postalCode);
           showToast('Location mapped successfully!', 'success');
         } else {
-          // Geocoder fallback
           setAddress(`Dropped Pin: Sector 62, Noida (Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)})`);
           setCity('Noida');
           setState('Uttar Pradesh');
@@ -122,7 +118,6 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
           showToast('Location reverse-geocoded to Sector 62', 'success');
         }
       } catch (geocodeErr) {
-        // Fallback if offline
         setAddress(`Dropped Pin: DLF Phase 3 (Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)})`);
         setCity('Gurugram');
         setState('Haryana');
@@ -134,6 +129,18 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
     } finally {
       setIsLocating(false);
     }
+  };
+
+  // Map picker confirm handler — receives fully resolved result from Nominatim
+  const handleMapPickerConfirm = (result: MapPinResult) => {
+    setLatitude(result.latitude);
+    setLongitude(result.longitude);
+    if (result.address) setAddress(result.address);
+    if (result.city) setCity(result.city);
+    if (result.state) setState(result.state);
+    if (result.pincode) setPincode(result.pincode);
+    setShowMapPicker(false);
+    showToast('Location picked from map!', 'success');
   };
 
   const submitMutation = useMutation({
@@ -206,120 +213,150 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
-      <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
-      
-      <View style={styles.header}>
-        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={20} color={colors.primary} />
-          <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Cancel</Text>
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h3.fontSize }]}>
-          {isEdit ? 'Edit Property' : 'Add Property'}
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <ResponsiveContainer>
+        <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
 
-      <ScrollView contentContainerStyle={{ padding: space.lg }} keyboardShouldPersistTaps="handled">
-        <Input
-          label="Property Name"
-          value={name}
-          onChangeText={setName}
-          placeholder="e.g. Karam Residency"
-          error={errors.name}
+        {/* Full-screen interactive map picker modal */}
+        <MapPinPicker
+          visible={showMapPicker}
+          initialLatitude={latitude ?? undefined}
+          initialLongitude={longitude ?? undefined}
+          onConfirm={handleMapPickerConfirm}
+          onCancel={() => setShowMapPicker(false)}
         />
 
-        <Input
-          label="Address"
-          value={address}
-          onChangeText={setAddress}
-          placeholder="Street name, landmark"
-          error={errors.address}
-        />
-
-        <TouchableOpacity
-          onPress={handleDropPin}
-          disabled={isLocating}
-          style={[
-            styles.dropPinBtn,
-            {
-              borderColor: colors.primary,
-              backgroundColor: isLocating ? colors.border : 'transparent',
-              marginBottom: space.md,
-            },
-          ]}
-        >
-          <Ionicons
-            name={isLocating ? 'refresh-outline' : 'pin-outline'}
-            size={18}
-            color={colors.primary}
-            style={{ marginRight: 6 }}
-          />
-          <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: font.caption.fontSize }}>
-            {isLocating ? 'Acquiring GPS Pin...' : 'Drop Pin (Auto-fill Address)'}
+        <View style={styles.header}>
+          <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={20} color={colors.primary} />
+            <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize, fontFamily: font.body.fontFamily }}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h3.fontSize, fontFamily: font.h3.fontFamily }]}>
+            {isEdit ? 'Edit Property' : 'Add Property'}
           </Text>
-        </TouchableOpacity>
-
-        {latitude && longitude ? (
-          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: -space.xs, marginBottom: space.md }}>
-            Coordinates: {latitude.toFixed(6)}, {longitude.toFixed(6)}
-          </Text>
-        ) : null}
-
-        <Input
-          label="Property Type"
-          value={propertyType}
-          onChangeText={setPropertyType}
-          type="select"
-          options={propertyTypeOptions}
-          placeholder="Select type"
-          error={errors.propertyType}
-        />
-
-        <View style={styles.row}>
-          <Input
-            label="City"
-            value={city}
-            onChangeText={setCity}
-            placeholder="e.g. Noida"
-            style={{ width: '48%' }}
-          />
-          <Input
-            label="State"
-            value={state}
-            onChangeText={setState}
-            placeholder="e.g. UP"
-            style={{ width: '48%' }}
-          />
+          <View style={{ width: 40 }} />
         </View>
 
-        <Input
-          label="Pincode"
-          value={pincode}
-          onChangeText={setPincode}
-          placeholder="e.g. 201301"
-          keyboardType="numeric"
-        />
-
-        {isEdit ? (
+        <ScrollView contentContainerStyle={{ padding: space.lg }} keyboardShouldPersistTaps="handled">
           <Input
-            label="Status"
-            value={isActive}
-            onChangeText={setIsActive}
-            type="select"
-            options={[
-              { label: 'Active', value: 'true' },
-              { label: 'Inactive', value: 'false' },
-            ]}
+            label="Property Name"
+            value={name}
+            onChangeText={setName}
+            placeholder="e.g. Karam Residency"
+            error={errors.name}
           />
-        ) : null}
 
-        <Button
-          label={isEdit ? 'Save Changes' : 'Create Property'}
-          onPress={handleSubmit}
-          loading={submitMutation.isPending || isFetching}
-          style={{ marginTop: space.md }}
-        />
-      </ScrollView>
+          <Input
+            label="Address"
+            value={address}
+            onChangeText={setAddress}
+            placeholder="Street name, landmark"
+            error={errors.address}
+          />
+
+          {/* GPS quick-fill — gets device location instantly */}
+          <TouchableOpacity
+            onPress={handleDropPin}
+            disabled={isLocating}
+            style={[
+              styles.locationBtn,
+              {
+                borderColor: colors.primary,
+                backgroundColor: isLocating ? colors.border : 'transparent',
+                marginBottom: space.xs,
+              },
+            ]}
+          >
+            <Ionicons
+              name={isLocating ? 'refresh-outline' : 'pin-outline'}
+              size={18}
+              color={colors.primary}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: font.caption.fontSize, fontFamily: font.caption.fontFamily }}>
+              {isLocating ? 'Acquiring GPS Pin...' : 'Drop Pin (GPS Auto-fill)'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Interactive map picker — drag to precise location */}
+          <TouchableOpacity
+            onPress={() => setShowMapPicker(true)}
+            style={[
+              styles.locationBtn,
+              {
+                borderColor: colors.primary,
+                backgroundColor: 'transparent',
+                marginBottom: space.md,
+              },
+            ]}
+          >
+            <Ionicons name="map-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
+            <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: font.caption.fontSize, fontFamily: font.caption.fontFamily }}>
+              Pick on Map
+            </Text>
+          </TouchableOpacity>
+
+          {latitude && longitude ? (
+            <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: -space.xs, marginBottom: space.md }}>
+              Coordinates: {latitude.toFixed(6)}, {longitude.toFixed(6)}
+            </Text>
+          ) : null}
+
+          <Input
+            label="Property Type"
+            value={propertyType}
+            onChangeText={setPropertyType}
+            type="select"
+            options={propertyTypeOptions}
+            placeholder="Select type"
+            error={errors.propertyType}
+          />
+
+          <View style={styles.row}>
+            <Input
+              label="City"
+              value={city}
+              onChangeText={setCity}
+              placeholder="e.g. Noida"
+              style={{ width: '48%' }}
+            />
+            <Input
+              label="State"
+              value={state}
+              onChangeText={setState}
+              placeholder="e.g. UP"
+              style={{ width: '48%' }}
+            />
+          </View>
+
+          <Input
+            label="Pincode"
+            value={pincode}
+            onChangeText={setPincode}
+            placeholder="e.g. 201301"
+            keyboardType="numeric"
+          />
+
+          {isEdit ? (
+            <Input
+              label="Status"
+              value={isActive}
+              onChangeText={setIsActive}
+              type="select"
+              options={[
+                { label: 'Active', value: 'true' },
+                { label: 'Inactive', value: 'false' },
+              ]}
+            />
+          ) : null}
+
+          <Button
+            label={isEdit ? 'Save Changes' : 'Create Property'}
+            onPress={handleSubmit}
+            loading={submitMutation.isPending || isFetching}
+            style={{ marginTop: space.md }}
+          />
+        </ScrollView>
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };
@@ -343,7 +380,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  dropPinBtn: {
+  locationBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

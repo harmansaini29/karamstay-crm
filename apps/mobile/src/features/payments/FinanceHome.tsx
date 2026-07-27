@@ -5,10 +5,10 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -18,8 +18,9 @@ import { Badge } from '../../components/Badge';
 import { useAuth } from '../auth/AuthContext';
 import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
-import { File, Paths } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 type SubTab = 'invoices' | 'payments' | 'expenses' | 'reports';
 
@@ -78,24 +79,24 @@ export const FinanceHome: React.FC<{ navigation: any }> = ({ navigation }) => {
       Alert.alert('Downloading Report', 'Please wait while the PDF document is compiled and downloaded...');
 
       const accessToken = apiClient.defaults.headers.common['Authorization'];
+      const fileUri = (FileSystem.documentDirectory || FileSystem.cacheDirectory || '') + `${name}.pdf`;
 
-      const destination = new File(Paths.document, `${name}.pdf`);
-      const task = File.createDownloadTask(url, destination, {
+      const downloadResumable = FileSystem.createDownloadResumable(url, fileUri, {
         headers: {
           Authorization: accessToken ? String(accessToken) : '',
         },
       });
 
-      const file = await task.downloadAsync();
+      const result = await downloadResumable.downloadAsync();
 
-      if (file && file.uri) {
+      if (result && result.uri) {
         if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(file.uri);
+          await Sharing.shareAsync(result.uri);
         } else {
-          Alert.alert('Downloaded', `PDF report saved to: ${file.uri}`);
+          Alert.alert('Downloaded', `PDF report saved to: ${result.uri}`);
         }
       } else {
-        throw new Error('Download task failed to return file');
+        throw new Error('Download failed to return file');
       }
     } catch (err: any) {
       Alert.alert('Export Failed', err.message || 'Unable to download report');
@@ -178,6 +179,7 @@ export const FinanceHome: React.FC<{ navigation: any }> = ({ navigation }) => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
         <View>
@@ -360,6 +362,7 @@ export const FinanceHome: React.FC<{ navigation: any }> = ({ navigation }) => {
           </ScrollView>
         ) : null}
       </View>
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

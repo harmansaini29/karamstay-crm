@@ -1,18 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  ActivityIndicator,
-  Alert,
-  Linking,
-  AppState,
-  Modal,
-  TextInput,
-} from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Linking, AppState, Modal, TextInput } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -23,6 +10,8 @@ import { Button } from '../../components/Button';
 import { useAuth } from '../auth/AuthContext';
 import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 type FinanceTab = 'invoices' | 'payments' | 'ledger';
 
@@ -299,6 +288,7 @@ export const TenantPaymentsScreen: React.FC<{ navigation: any }> = ({ navigation
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.subtitle, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>
@@ -506,6 +496,8 @@ export const TenantPaymentsScreen: React.FC<{ navigation: any }> = ({ navigation
           </Card>
         </View>
       </Modal>
+    
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

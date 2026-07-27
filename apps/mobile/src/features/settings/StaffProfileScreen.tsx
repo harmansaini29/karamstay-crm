@@ -1,20 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  ScrollView,
-  Switch,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity, Alert } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../../theme/ThemeProvider';
 import { color as semanticColor } from '../../theme/tokens';
 import { Card } from '../../components/Card';
 import { apiClient, parseApiError } from '../../api/client';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 export const StaffProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space, radius } = useTheme();
@@ -64,6 +57,7 @@ export const StaffProfileScreen: React.FC<{ navigation: any }> = ({ navigation }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <ScrollView contentContainerStyle={{ padding: space.lg }}>
         <Text style={[styles.title, { color: colors.text, fontSize: font.h1.fontSize }]}>
           Staff Profile
@@ -168,6 +162,8 @@ export const StaffProfileScreen: React.FC<{ navigation: any }> = ({ navigation }
           </Text>
         </TouchableOpacity>
       </ScrollView>
+    
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

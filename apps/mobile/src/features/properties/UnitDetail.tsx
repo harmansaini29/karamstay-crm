@@ -1,14 +1,5 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
-  Alert,
-  ScrollView,
-  Linking,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Linking, Modal, TouchableWithoutFeedback, ActivityIndicator } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -18,7 +9,10 @@ import { Badge } from '../../components/Badge';
 import { useAuth } from '../auth/AuthContext';
 import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Button } from '../../components/Button';
+import { BedDragGrid } from '../../components/BedDragGrid';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 
 interface Unit {
   id: number;
@@ -40,11 +34,13 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
   const { id } = route.params;
   const { colors, font, space, radius } = useTheme();
   const { user } = useAuth();
+
   const queryClient = useQueryClient();
   const isOwner = user?.role?.name === 'owner';
   const isManager = user?.role?.name === 'manager';
 
   const [selectedBeds, setSelectedBeds] = useState<number[]>([]);
+  const [occupiedBedId, setOccupiedBedId] = useState<number | null>(null);
 
   const {
     data: unit,
@@ -63,7 +59,6 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
   const {
     data: beds = [],
     isLoading: isBedsLoading,
-    refetch: refetchBeds,
   } = useQuery<any[]>({
     queryKey: ['unit-beds', id],
     queryFn: async () => {
@@ -71,6 +66,40 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
       return res.data;
     },
     enabled: !!unit && unit.capacity > 1,
+  });
+
+  // Fetch all active tenancies for this unit (drives the occupied-bed modal)
+  const { data: unitTenancies = [] } = useQuery<any[]>({
+    queryKey: ['unit-tenancies', id],
+    queryFn: async () => {
+      const res = await apiClient.get('/tenancies');
+      return Array.isArray(res.data)
+        ? res.data.filter((t: any) => t.unit_id === id && t.status === 'active')
+        : [];
+    },
+    enabled: !!unit && unit.capacity > 1,
+  });
+
+  // Build bedId → tenancy lookup for the modal
+  const bedTenancyMap: Record<number, any> = {};
+  for (const tenancy of unitTenancies) {
+    if (Array.isArray(tenancy.bed_ids)) {
+      for (const bid of tenancy.bed_ids) {
+        bedTenancyMap[bid] = tenancy;
+      }
+    }
+  }
+  const modalTenantId: number | undefined = occupiedBedId !== null
+    ? bedTenancyMap[occupiedBedId]?.tenant_id
+    : undefined;
+
+  const { data: modalTenant, isFetching: isModalTenantFetching } = useQuery<any>({
+    queryKey: ['tenant', modalTenantId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/tenants/${modalTenantId}`);
+      return res.data;
+    },
+    enabled: modalTenantId != null,
   });
 
   const deleteMutation = useMutation({
@@ -112,22 +141,32 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
 
   const handleCheckInBeds = () => {
     if (selectedBeds.length === 0) return;
-    navigation.navigate('CheckInForm', {
+    const params = {
       propertyId: unit?.property_id,
       unitId: unit?.id,
       bedIds: selectedBeds,
       rent: unit ? unit.rent : 0,
       deposit: unit ? unit.deposit : 0,
-    });
+    };
+    try {
+      navigation.navigate('CheckInForm', params);
+    } catch (_) {
+      navigation.navigate('Tenants', { screen: 'CheckInForm', params });
+    }
   };
 
   const handleCheckInSingle = () => {
-    navigation.navigate('CheckInForm', {
+    const params = {
       propertyId: unit?.property_id,
       unitId: unit?.id,
       rent: unit ? unit.rent : 0,
       deposit: unit ? unit.deposit : 0,
-    });
+    };
+    try {
+      navigation.navigate('CheckInForm', params);
+    } catch (_) {
+      navigation.navigate('Tenants', { screen: 'CheckInForm', params });
+    }
   };
 
   if (isUnitLoading || (unit && unit.capacity > 1 && isBedsLoading)) {
@@ -153,6 +192,7 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <View style={styles.header}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color={colors.primary} />
@@ -188,59 +228,54 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
             <Badge status={unit.status} />
           </View>
 
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-          <View style={styles.infoGrid}>
+          <View style={[styles.infoGrid, { marginTop: space.md }]}>
             <View style={styles.infoCol}>
-              <Text style={[styles.infoLabel, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Monthly Rent</Text>
-              <Text style={[styles.infoVal, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
+              <Text style={[styles.label, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Building</Text>
+              <Text style={[styles.value, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
+                {unit.building || 'Main'}
+              </Text>
+            </View>
+            <View style={styles.infoCol}>
+              <Text style={[styles.label, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Floor</Text>
+              <Text style={[styles.value, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
+                {unit.floor}
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.infoGrid, { marginTop: space.md }]}>
+            <View style={styles.infoCol}>
+              <Text style={[styles.label, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Monthly Rent</Text>
+              <Text style={[styles.value, { color: colors.primary, fontSize: font.h3.fontSize }]}>
                 {formatCurrency(unit.rent)}
               </Text>
             </View>
-
             <View style={styles.infoCol}>
-              <Text style={[styles.infoLabel, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Security Deposit</Text>
-              <Text style={[styles.infoVal, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
+              <Text style={[styles.label, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Deposit</Text>
+              <Text style={[styles.value, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
                 {formatCurrency(unit.deposit)}
               </Text>
             </View>
           </View>
 
-          <View style={styles.infoGrid}>
-            <View style={styles.infoCol}>
-              <Text style={[styles.infoLabel, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Building</Text>
-              <Text style={[styles.infoVal, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
-                {unit.building || 'N/A'}
+          {unit.notes ? (
+            <View style={{ marginTop: space.md, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <Text style={[styles.label, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Notes</Text>
+              <Text style={{ color: colors.text, fontSize: font.body.fontSize, marginTop: 2 }}>
+                {unit.notes}
               </Text>
             </View>
-
-            <View style={styles.infoCol}>
-              <Text style={[styles.infoLabel, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Floor</Text>
-              <Text style={[styles.infoVal, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
-                {unit.floor || 'N/A'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.infoGrid}>
-            <View style={styles.infoCol}>
-              <Text style={[styles.infoLabel, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Max Capacity</Text>
-              <Text style={[styles.infoVal, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
-                {unit.capacity} {unit.capacity === 1 ? 'person' : 'people'}
-              </Text>
-            </View>
-          </View>
+          ) : null}
         </Card>
 
-        {/* Map Preview Card */}
+        {/* Map Location Link */}
         {unit.latitude && unit.longitude ? (
-          <Card style={{ marginBottom: space.md, padding: 0, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
-            <View style={{ height: 100, backgroundColor: colors.primary + '10', justifyContent: 'center', alignItems: 'center' }}>
-              <Ionicons name="map-outline" size={28} color={colors.primary} />
-              <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.caption.fontSize, marginTop: 4 }}>
-                Unit Location Pin Dropped
+          <Card style={{ borderWidth: 1, marginBottom: space.md, padding: 0, overflow: 'hidden' }}>
+            <View style={{ padding: space.md, backgroundColor: colors.surfaceSoft }}>
+              <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.caption.fontSize }}>
+                GEOLOCATION COORDINATES
               </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
                 {unit.latitude.toFixed(6)}, {unit.longitude.toFixed(6)}
               </Text>
             </View>
@@ -259,50 +294,29 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
           </Card>
         ) : null}
 
-        {/* Bed-Level Slots Multi-select */}
+        {/* Bed-Level Slots — Gesture Drag Grid */}
         {unit.capacity > 1 ? (
           <Card style={{ borderWidth: 1, marginBottom: space.md }}>
             <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.bodyStrong.fontSize, marginBottom: space.xs }}>
               Bed Inventory Slot Grid
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: space.sm }}>
-              Tap vacant slots to select them for a merged check-in.
+              Tap to select • Long-press a vacant bed and drag onto another to merge for a shared check-in.
             </Text>
 
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-              {beds.map((bed) => {
-                const isSelected = selectedBeds.includes(bed.id);
-                const isVacant = bed.status === 'vacant';
-                
-                return (
-                  <TouchableOpacity
-                    key={bed.id}
-                    disabled={!isVacant}
-                    onPress={() => handleToggleBed(bed.id)}
-                    style={{
-                      width: '48%',
-                      borderWidth: 1,
-                      borderColor: isSelected ? colors.primary : colors.border,
-                      backgroundColor: isSelected ? colors.primary + '08' : colors.surface,
-                      borderRadius: radius.md,
-                      padding: 12,
-                      marginBottom: 10,
-                      opacity: isVacant ? 1 : 0.7,
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.caption.fontSize }}>
-                        {bed.bed_no}
-                      </Text>
-                      {isSelected && <Ionicons name="checkmark-circle" size={16} color={colors.primary} />}
-                    </View>
-                    <Badge status={bed.status} style={{ marginTop: 8 }} />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <BedDragGrid
+              beds={beds}
+              selectedBeds={selectedBeds}
+              onToggle={handleToggleBed}
+              onMerge={(bedIds) => {
+                // Select both merged beds and trigger check-in flow immediately
+                const uniqueIds = Array.from(new Set([...selectedBeds, ...bedIds]));
+                setSelectedBeds(uniqueIds);
+              }}
+              onOccupiedTap={(bedId) => setOccupiedBedId(bedId)}
+            />
 
-            {/* Checkin merge button */}
+            {/* Check-in button */}
             {selectedBeds.length > 0 && (isOwner || isManager) ? (
               <Button
                 label={`Check-in Tenant to Selected Beds (${selectedBeds.length})`}
@@ -321,16 +335,65 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
             />
           ) : null
         )}
-
-        <Card style={{ borderWidth: 1 }}>
-          <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.bodyStrong.fontSize, marginBottom: space.sm }}>
-            Unit Notes
-          </Text>
-          <Text style={{ color: unit.notes ? colors.text : colors.textMuted, fontSize: font.body.fontSize, lineHeight: 20 }}>
-            {unit.notes || 'No notes added for this unit.'}
-          </Text>
-        </Card>
       </ScrollView>
+      </ResponsiveContainer>
+
+      {/* Occupied Bed — Tenant Info Modal */}
+      <Modal
+        visible={occupiedBedId !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOccupiedBedId(null)}
+      >
+        <TouchableWithoutFeedback onPress={() => setOccupiedBedId(null)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.modalCard, { backgroundColor: colors.surface, borderRadius: radius.lg }]}>
+                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize, marginBottom: space.md }}>
+                  Bed Occupant
+                </Text>
+
+                {isModalTenantFetching ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : modalTenant ? (
+                  <View>
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.bodyStrong.fontSize }}>
+                      {modalTenant.name}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 4 }}>
+                      {modalTenant.phone}{modalTenant.email ? ` · ${modalTenant.email}` : ''}
+                    </Text>
+                    {modalTenant.occupation ? (
+                      <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 2 }}>
+                        {modalTenant.occupation}
+                      </Text>
+                    ) : null}
+                    {modalTenant.emergency_contact_name ? (
+                      <View style={{ marginTop: space.sm, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: colors.border }}>
+                        <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>EMERGENCY CONTACT</Text>
+                        <Text style={{ color: colors.text, fontSize: font.caption.fontSize, marginTop: 2 }}>
+                          {modalTenant.emergency_contact_name} · {modalTenant.emergency_contact_phone}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : (
+                  <Text style={{ color: colors.textMuted, fontSize: font.body.fontSize }}>
+                    No tenant information found for this bed.
+                  </Text>
+                )}
+
+                <TouchableOpacity
+                  onPress={() => setOccupiedBedId(null)}
+                  style={[styles.modalCloseBtn, { borderColor: colors.border }]}
+                >
+                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.body.fontSize }}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -350,27 +413,47 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   unitTitle: {
     fontWeight: 'bold',
   },
-  divider: {
-    height: 1,
-    marginVertical: 16,
-  },
   infoGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 16,
   },
   infoCol: {
-    width: '48%',
+    flex: 1,
   },
-  infoLabel: {
-    marginBottom: 4,
+  label: {
+    textTransform: 'uppercase',
   },
-  infoVal: {
+  value: {
     fontWeight: 'bold',
+    marginTop: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.52)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  modalCloseBtn: {
+    marginTop: 20,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: 'center',
   },
 });

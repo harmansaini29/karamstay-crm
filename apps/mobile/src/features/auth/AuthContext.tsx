@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { storage } from '../../utils/storage';
 import { apiClient, parseApiError } from '../../api/client';
 import { jwtDecode } from 'jwt-decode';
@@ -33,7 +33,16 @@ interface AuthContextType {
 
 async function registerForPushNotificationsAsync(): Promise<string | null> {
   if (Platform.OS === 'web') return null;
+  
+  // Expo Go on Android (SDK 53+) removed push notification support
+  // We must not even evaluate the module, or it will crash.
+  if (Constants.executionEnvironment === 'storeClient') {
+    console.warn("Push notifications are not supported in Expo Go. Please use a development build.");
+    return null;
+  }
+
   try {
+    const Notifications = require('expo-notifications');
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
@@ -45,6 +54,7 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
     const tokenData = await Notifications.getDevicePushTokenAsync();
     return tokenData.data;
   } catch (err) {
+    console.warn("Failed to register for push notifications:", err);
     return null;
   }
 }

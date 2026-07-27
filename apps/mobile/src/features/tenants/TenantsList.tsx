@@ -1,13 +1,5 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  TextInput,
-} from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -16,6 +8,8 @@ import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface Tenant {
   id: number;
@@ -88,6 +82,7 @@ export const TenantsList: React.FC<{ navigation: any }> = ({ navigation }) => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
         <View>
@@ -170,6 +165,7 @@ export const TenantsList: React.FC<{ navigation: any }> = ({ navigation }) => {
         refreshing={isLoading}
         onRefresh={refetch}
       />
+          </ResponsiveContainer>
     </SafeAreaView>
   );
 };
