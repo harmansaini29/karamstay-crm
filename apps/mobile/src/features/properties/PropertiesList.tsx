@@ -112,7 +112,9 @@ export const PropertiesList: React.FC<{ navigation: any }> = ({ navigation }) =>
           data={properties}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderPropertyItem}
-          contentContainerStyle={{ padding: space.lg }}
+          contentContainerStyle={{ padding: space.lg, paddingBottom: 90 }}
+          removeClippedSubviews
+          initialNumToRender={10}
           ListEmptyComponent={
             <EmptyState
               title="No Properties Found"

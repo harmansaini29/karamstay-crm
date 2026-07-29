@@ -277,8 +277,8 @@ const polyfillGetTenancy = async (tenancyId: number, config: AxiosRequestConfig)
 
     const reconstructedTenancy = {
       id: tenancyId,
-      tenant_id: 1,
-      unit_id: 1,
+      tenant_id: 1,   // TODO: AWS — resolve via GET /tenancies/{id} once live backend has full data
+      unit_id: 1,     // TODO: AWS — resolve via GET /tenancies/{id} once live backend has full data
       start_date: startDate,
       end_date: null,
       move_out_date: null,

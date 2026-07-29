@@ -73,6 +73,7 @@ export const Button: React.FC<ButtonProps> = ({
     color: resolve(pressed).textCol,
     fontWeight: '500',
     fontSize: size === 'compact' ? font.caption.fontSize : font.body.fontSize,
+    flexShrink: 1,
   });
 
   return (
@@ -104,7 +105,13 @@ export const Button: React.FC<ButtonProps> = ({
               style={{ marginRight: space.sm }}
             />
           ) : null}
-          <Text style={textStyle(pressed)}>{label}</Text>
+          <Text
+            style={textStyle(pressed)}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            {label}
+          </Text>
         </>
       )}
     </Pressable>

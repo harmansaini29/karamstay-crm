@@ -10,6 +10,8 @@ import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useFinancialMask } from '../../hooks/useFinancialMask';
+import { useAuth } from '../auth/AuthContext';
 
 interface TenantProfile {
   id: number;
@@ -82,22 +84,38 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
     enabled: !!tenancyUnit?.property_id,
   });
 
+  // ⚠️ ALL hooks must be declared before any conditional returns (Rules of Hooks)
+  const { maskAmount } = useFinancialMask();
+  const { role } = useAuth();
+  const isStaff = role === 'staff';
+
+  // Navigates to the Finance tab → Ledger screen for a given tenancyId.
+  // Uses getParent() as a fallback for deep nesting inside TenantsStack.
+  // Staff sessions have no Finance tab — silently no-ops to prevent crash.
+  const navigateToLedger = (tenancyId: number) => {
+    if (isStaff) return;
+    try {
+      navigation.navigate('Finance', { screen: 'Ledger', params: { tenancyId } });
+    } catch (_) {
+      navigation.getParent()?.navigate('Finance', { screen: 'Ledger', params: { tenancyId } });
+    }
+  };
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    }).format(amount);
+
+  const hasActiveTenancy = tenancy?.status === 'active';
+
   if (isLoading) return <LoadingSkeleton variant="detail" />;
   if (isError || !tenant) {
     return (
       <ErrorState message={parseApiError(error || new Error('Tenant not found')).message} onRetry={refetch} />
     );
   }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const hasActiveTenancy = tenancy?.status === 'active';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
@@ -194,13 +212,13 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
               <View style={styles.gridCol}>
                 <Text style={[styles.label, { color: colors.textMuted }]}>Monthly Rent</Text>
                 <Text style={[styles.val, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
-                  {formatCurrency(tenancy.monthly_rent)}
+                  {maskAmount(tenancy.monthly_rent)}
                 </Text>
               </View>
               <View style={styles.gridCol}>
                 <Text style={[styles.label, { color: colors.textMuted }]}>Security Deposit</Text>
                 <Text style={[styles.val, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
-                  {formatCurrency(tenancy.security_deposit)}
+                  {maskAmount(tenancy.security_deposit)}
                 </Text>
               </View>
             </View>
@@ -261,7 +279,7 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
             <View style={[styles.buttonRow, { marginTop: space.md }]}>
               <Button
                 label="Check Ledger"
-                onPress={() => navigation.navigate('Finance', { screen: 'Ledger', params: { tenancyId: tenancy.id } })}
+                onPress={() => navigateToLedger(tenancy.id)}
                 variant="secondary"
                 style={{ flex: 1, marginRight: space.sm }}
               />
@@ -272,6 +290,18 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
                 style={{ flex: 1, marginLeft: space.sm }}
               />
             </View>
+            {/* Legal Agreement workspace */}
+            <Button
+              label="📄 Legal Agreement"
+              onPress={() =>
+                navigation.navigate('AgreementWorkspace', {
+                  tenantId: tenant.id,
+                  tenantName: tenant.name,
+                })
+              }
+              variant="secondary"
+              style={{ marginTop: space.sm }}
+            />
           </Card>
         ) : (
           <Card style={{ borderWidth: 1, alignItems: 'center', padding: space.xl }}>

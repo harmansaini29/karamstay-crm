@@ -47,6 +47,8 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
   const [billingDay, setBillingDay] = useState('1');
   const [installmentCount, setInstallmentCount] = useState('1');
   const [bedIds, setBedIds] = useState<number[]>(passedBedIds || []);
+  // Agreement template selection: A=Standard, B=Enhanced, C=Short-Stay
+  const [agreementTemplateId, setAgreementTemplateId] = useState<'A' | 'B' | 'C'>('A');
 
   const [toastMsg, setToastMsg] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
@@ -153,7 +155,7 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
       const res = await apiClient.post('/tenancies', payload);
       return res.data;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       // Broad-invalidate all affected cache keys for zero stale-data
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
       queryClient.invalidateQueries({ queryKey: ['tenancy-by-tenant', parseInt(selectedTenantId)] });
@@ -169,6 +171,24 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
       queryClient.invalidateQueries({ queryKey: ['owner-inventory-beds'] });
       queryClient.invalidateQueries({ queryKey: ['manager-units-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['manager-beds-dashboard'] });
+
+      // Also create the linked agreement record for this tenancy
+      try {
+        const templateNames: Record<string, string> = {
+          A: 'Standard Agreement',
+          B: 'Enhanced Agreement',
+          C: 'Short-Stay Agreement',
+        };
+        await apiClient.post('/agreements', {
+          tenancy_id: data.id,
+          tenant_id: parseInt(selectedTenantId),
+          template_id: agreementTemplateId,
+          template_name: templateNames[agreementTemplateId],
+        });
+        queryClient.invalidateQueries({ queryKey: ['agreements', 'tenant', parseInt(selectedTenantId)] });
+      } catch (_agErr) {
+        // Non-fatal: agreement creation failure does not block check-in
+      }
 
       showToast('Checked in successfully! Tenancy initialized.', 'success');
       setTimeout(() => {
@@ -236,6 +256,12 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
     label: `Day ${i + 1}`,
     value: String(i + 1),
   }));
+
+  const AGREEMENT_TEMPLATES = [
+    { id: 'A' as const, label: 'Standard', desc: 'Identity, address, emergency contact' },
+    { id: 'B' as const, label: 'Enhanced', desc: 'Standard + guardian, vehicle, workplace' },
+    { id: 'C' as const, label: 'Short-Stay', desc: 'Standard + checkout date & purpose' },
+  ];
 
   // --- Render ---
 
@@ -432,6 +458,36 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
           ]}
           placeholder="Select installment count"
         />
+
+        {/* Agreement Template Selector */}
+        <View style={{ marginTop: space.md, marginBottom: space.sm }}>
+          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>
+            Agreement Template
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {AGREEMENT_TEMPLATES.map((t) => (
+              <TouchableOpacity
+                key={t.id}
+                onPress={() => setAgreementTemplateId(t.id)}
+                style={{
+                  flex: 1,
+                  borderWidth: 1.5,
+                  borderColor: agreementTemplateId === t.id ? colors.primary : colors.border,
+                  borderRadius: 8,
+                  padding: 10,
+                  backgroundColor: agreementTemplateId === t.id ? colors.primary + '12' : colors.surface,
+                }}
+              >
+                <Text style={{ color: agreementTemplateId === t.id ? colors.primary : colors.text, fontWeight: '700', fontSize: 13 }}>
+                  {t.label}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2, lineHeight: 13 }}>
+                  {t.desc}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
 
         <Button
           label="Execute Check-in"

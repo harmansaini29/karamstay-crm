@@ -153,17 +153,7 @@ export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) =
     })),
   ];
 
-  const handleBack = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      try {
-        navigation.navigate('MoreHome');
-      } catch (_) {
-        navigation.navigate('Dashboard');
-      }
-    }
-  };
+  const handleBack = () => navigation.goBack();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
@@ -220,7 +210,9 @@ export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) =
         data={filteredTickets}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderTicketItem}
-        contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.lg, flexGrow: 1 }}
+        contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 90, flexGrow: 1 }}
+        removeClippedSubviews
+        initialNumToRender={10}
         ListEmptyComponent={
           <EmptyState
             title="Clean Slate!"

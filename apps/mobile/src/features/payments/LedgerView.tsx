@@ -121,7 +121,9 @@ export const LedgerView: React.FC<{ route: any; navigation: any }> = ({ route, n
         data={ledgerWithBalance}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderLedgerItem}
-        contentContainerStyle={{ padding: space.lg }}
+        contentContainerStyle={{ padding: space.lg, paddingBottom: 90 }}
+        removeClippedSubviews
+        initialNumToRender={15}
         ListEmptyComponent={
           <Card style={{ alignItems: 'center', padding: space.xl }}>
             <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>No ledger entries found</Text>

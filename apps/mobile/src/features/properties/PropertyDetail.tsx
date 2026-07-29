@@ -12,6 +12,7 @@ import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useFinancialMask } from '../../hooks/useFinancialMask';
 
 interface Property {
   id: number;
@@ -97,6 +98,9 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
     );
   };
 
+  // ⚠️ Custom hooks must precede all conditional returns (Rules of Hooks)
+  const { maskAmount } = useFinancialMask();
+
   if (isPropLoading || isUnitsLoading) return <LoadingSkeleton variant="detail" />;
   if (isPropError || !property) {
     return (
@@ -106,14 +110,6 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
       />
     );
   }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
 
   const filteredUnits = units.filter((u) => {
     if (unitFilter === 'all') return true;
@@ -133,7 +129,7 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
               Unit {item.unit_no}
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
-              {item.unit_type.toUpperCase()} · Rent: {formatCurrency(item.rent)}
+              {item.unit_type.toUpperCase()} · Rent: {maskAmount(item.rent)}
             </Text>
           </View>
           <Badge status={item.status} />
@@ -263,7 +259,6 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
         refreshing={isUnitsLoading}
         onRefresh={refetchUnits}
       />
-    
       </ResponsiveContainer>
     </SafeAreaView>
   );

@@ -311,6 +311,69 @@ export const mockDocs: any[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Agreement Engine data
+// ---------------------------------------------------------------------------
+export const mockAgreements: any[] = [
+  {
+    id: 1,
+    tenancy_id: 1,
+    tenant_id: 1,
+    template_id: 'A',
+    template_name: 'Standard Agreement',
+    status: 'approved',   // form_submitted | docx_generated | offline_pending | approved
+    form_data: {
+      full_name: 'John Doe',
+      age: '30',
+      identity_number: '****-****-8888', // masked
+      phone: '+919999988888',
+      emergency_contact: 'Jane Doe / +919999988887',
+      permanent_address: '12 Main Street, Delhi',
+      office_address: 'Block A, Tech Park, Noida',
+      digital_signature: 'data:image/png;base64,MOCK_SIG',
+    },
+    docx_file_name: 'agreement_john_doe_2026-01.docx',
+    docx_generated_at: '2026-01-02T10:00:00Z',
+    tracker_stage: 4,  // 1=submitted 2=docx_generated 3=offline_pending 4=approved
+    created_at: '2026-01-01T09:00:00Z',
+  },
+];
+
+export const mockAgreementUploads: any[] = [
+  {
+    id: 1,
+    agreement_id: 1,
+    upload_type: 'stamp_paper',   // stamp_paper | police_noc | notary_stamp
+    file_name: 'stamp_paper_doe.jpg',
+    status: 'APPROVED',           // PENDING | STAMPED | NOTARIZED | APPROVED
+    notes: 'Stamp paper verified.',
+    uploaded_at: '2026-01-03T11:00:00Z',
+  },
+];
+
+export const mockStaff: any[] = [
+  {
+    id: 201,
+    name: 'Rohan Verma',
+    email: 'rohan.staff@karamstay.com',
+    phone: '+919876500001',
+    role: { id: 5, name: 'staff' },
+    is_active: true,
+    assigned_properties: [1],
+    created_at: '2026-02-01T09:00:00Z',
+  },
+  {
+    id: 202,
+    name: 'Priya Nair',
+    email: 'priya.staff@karamstay.com',
+    phone: '+919876500002',
+    role: { id: 5, name: 'staff' },
+    is_active: true,
+    assigned_properties: [1, 2],
+    created_at: '2026-03-10T09:00:00Z',
+  },
+];
+
 export const mockConsents: any[] = [
   {
     user_id: 10,
@@ -369,6 +432,8 @@ export const handleMockRequest = async (
       ? 'accountant'
       : email?.includes('manager')
       ? 'manager'
+      : email?.includes('staff')
+      ? 'staff'
       : 'owner';
     mockUser = {
       id: 1,
@@ -376,7 +441,7 @@ export const handleMockRequest = async (
       email: email || 'owner@karamstay.com',
       phone: '+919999911111',
       is_active: true,
-      role: { id: 1, name: roleName },
+      role: { id: roleName === 'staff' ? 5 : 1, name: roleName },
     };
     return {
       data: {
@@ -965,6 +1030,156 @@ export const handleMockRequest = async (
       data: { download_url: 'https://s3.mock-presigned-url.com/download/lease.pdf' },
       status: 200,
     };
+  }
+
+  // --- AGREEMENT ENGINE ---
+
+  // GET /agreements?tenant_id=X
+  if (url.startsWith('/agreements') && method === 'get') {
+    const tenantIdParam = url.match(/tenant_id=(\d+)/);
+    if (tenantIdParam) {
+      const tid = parseInt(tenantIdParam[1], 10);
+      return { data: mockAgreements.filter((a) => a.tenant_id === tid), status: 200 };
+    }
+    const tenancyIdParam = url.match(/tenancy_id=(\d+)/);
+    if (tenancyIdParam) {
+      const tnid = parseInt(tenancyIdParam[1], 10);
+      return { data: mockAgreements.filter((a) => a.tenancy_id === tnid), status: 200 };
+    }
+    // GET /agreements/{id}
+    const agMatch = url.match(/^\/agreements\/(\d+)$/);
+    if (agMatch) {
+      const agId = parseInt(agMatch[1], 10);
+      const ag = mockAgreements.find((a) => a.id === agId);
+      if (!ag) return { data: {}, status: 404 };
+      return { data: ag, status: 200 };
+    }
+    return { data: mockAgreements, status: 200 };
+  }
+
+  // POST /agreements — create a new agreement on check-in
+  if (url === '/agreements' && method === 'post') {
+    const body = JSON.parse(config.data || '{}');
+    const newAg = {
+      id: mockAgreements.length + 1,
+      tracker_stage: 1,
+      status: 'form_submitted',
+      docx_file_name: null,
+      docx_generated_at: null,
+      form_data: {},
+      created_at: new Date().toISOString(),
+      ...body,
+    };
+    mockAgreements.push(newAg);
+    return { data: newAg, status: 201 };
+  }
+
+  // PATCH /agreements/{id} — save form_data / update stage
+  const agPatchMatch = url.match(/^\/agreements\/(\d+)$/);
+  if (agPatchMatch && method === 'patch') {
+    const agId = parseInt(agPatchMatch[1], 10);
+    const ag = mockAgreements.find((a) => a.id === agId);
+    if (!ag) return { data: {}, status: 404 };
+    const body = JSON.parse(config.data || '{}');
+    Object.assign(ag, body);
+    return { data: ag, status: 200 };
+  }
+
+  // POST /agreements/{id}/compile-docx — triggers docx generation
+  const compileMatch = url.match(/^\/agreements\/(\d+)\/compile-docx$/);
+  if (compileMatch && method === 'post') {
+    const agId = parseInt(compileMatch[1], 10);
+    const ag = mockAgreements.find((a) => a.id === agId);
+    if (!ag) return { data: {}, status: 404 };
+    ag.tracker_stage = 2;
+    ag.status = 'docx_generated';
+    ag.docx_generated_at = new Date().toISOString();
+    ag.docx_file_name = `agreement_tenant_${ag.tenant_id}_${new Date().toISOString().split('T')[0]}.docx`;
+    return { data: ag, status: 200 };
+  }
+
+  // GET /agreements/{id}/uploads
+  const agUploadsGet = url.match(/^\/agreements\/(\d+)\/uploads$/);
+  if (agUploadsGet && method === 'get') {
+    const agId = parseInt(agUploadsGet[1], 10);
+    return { data: mockAgreementUploads.filter((u) => u.agreement_id === agId), status: 200 };
+  }
+
+  // POST /agreements/{id}/offline-upload
+  const agUploadPost = url.match(/^\/agreements\/(\d+)\/offline-upload$/);
+  if (agUploadPost && method === 'post') {
+    const agId = parseInt(agUploadPost[1], 10);
+    const body = JSON.parse(config.data || '{}');
+    const ag = mockAgreements.find((a) => a.id === agId);
+    if (ag && ag.tracker_stage < 3) {
+      ag.tracker_stage = 3;
+      ag.status = 'offline_pending';
+    }
+    const newUpload = {
+      id: mockAgreementUploads.length + 1,
+      agreement_id: agId,
+      status: 'PENDING',
+      uploaded_at: new Date().toISOString(),
+      ...body,
+    };
+    mockAgreementUploads.push(newUpload);
+    return { data: newUpload, status: 201 };
+  }
+
+  // PATCH /agreements/{id}/uploads/{uid} — update offline upload status
+  const agUploadPatch = url.match(/^\/agreements\/(\d+)\/uploads\/(\d+)$/);
+  if (agUploadPatch && method === 'patch') {
+    const uid = parseInt(agUploadPatch[2], 10);
+    const upload = mockAgreementUploads.find((u) => u.id === uid);
+    if (!upload) return { data: {}, status: 404 };
+    const body = JSON.parse(config.data || '{}');
+    Object.assign(upload, body);
+    // Promote to approved stage if all uploads are APPROVED
+    const agId = upload.agreement_id;
+    const ag = mockAgreements.find((a) => a.id === agId);
+    const allUploads = mockAgreementUploads.filter((u) => u.agreement_id === agId);
+    if (ag && allUploads.length > 0 && allUploads.every((u) => u.status === 'APPROVED')) {
+      ag.tracker_stage = 4;
+      ag.status = 'approved';
+    }
+    return { data: upload, status: 200 };
+  }
+
+  // --- STAFF MANAGEMENT ---
+  if (url === '/staff' && method === 'get') {
+    return { data: mockStaff, status: 200 };
+  }
+
+  if (url === '/staff' && method === 'post') {
+    const body = JSON.parse(config.data || '{}');
+    const newStaff = {
+      id: mockStaff.length + 201,
+      role: { id: 5, name: 'staff' },
+      is_active: true,
+      assigned_properties: [],
+      created_at: new Date().toISOString(),
+      ...body,
+    };
+    mockStaff.push(newStaff);
+    return { data: newStaff, status: 201 };
+  }
+
+  const staffDetailMatch = url.match(/^\/staff\/(\d+)$/);
+  if (staffDetailMatch) {
+    const sid = parseInt(staffDetailMatch[1], 10);
+    const member = mockStaff.find((s) => s.id === sid);
+    if (!member) return { data: {}, status: 404 };
+    if (method === 'get') return { data: member, status: 200 };
+    if (method === 'patch') {
+      const body = JSON.parse(config.data || '{}');
+      Object.assign(member, body);
+      return { data: member, status: 200 };
+    }
+    if (method === 'delete') {
+      const idx = mockStaff.findIndex((s) => s.id === sid);
+      if (idx !== -1) mockStaff.splice(idx, 1);
+      return { data: { message: 'Staff member removed' }, status: 200 };
+    }
   }
 
   return { data: {}, status: 404 };

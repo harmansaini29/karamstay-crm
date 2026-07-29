@@ -64,7 +64,9 @@ export const ManagerTabNavigator: React.FC = () => {
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
+          position: 'absolute',
           backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.surface,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,

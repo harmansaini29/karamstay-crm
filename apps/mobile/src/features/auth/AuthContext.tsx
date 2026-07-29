@@ -13,7 +13,7 @@ interface UserProfile {
   is_active: boolean;
   role: {
     id: number;
-    name: 'owner' | 'manager' | 'accountant' | 'tenant';
+    name: 'owner' | 'manager' | 'accountant' | 'tenant' | 'staff';
   };
 }
 
@@ -21,7 +21,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   user: UserProfile | null;
-  role: 'owner' | 'manager' | 'accountant' | 'tenant' | null;
+  role: 'owner' | 'manager' | 'accountant' | 'tenant' | 'staff' | null;
   hasAcceptedConsent: boolean;
   setHasAcceptedConsent: (val: boolean) => void;
   login: (email: string, password: string) => Promise<void>;

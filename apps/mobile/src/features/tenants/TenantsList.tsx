@@ -153,7 +153,9 @@ export const TenantsList: React.FC<{ navigation: any }> = ({ navigation }) => {
         data={filteredTenants}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderTenantItem}
-        contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.lg }}
+        contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 90 }}
+        removeClippedSubviews
+        initialNumToRender={12}
         ListEmptyComponent={
           <EmptyState
             title="No Tenants Found"

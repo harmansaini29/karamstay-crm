@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -41,6 +41,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
   const isOwnerManager = user?.role?.name === 'owner' || user?.role?.name === 'manager';
 
   const [isUploading, setIsUploading] = useState(false);
+  const isPickingRef = useRef(false); // mutex: prevents concurrent picker sessions
   const [selectedDoc, setSelectedDoc] = useState<DocumentItem | null>(null);
   const [optionsModalVisible, setOptionsModalVisible] = useState(false);
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
@@ -82,6 +83,8 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
+      queryClient.invalidateQueries({ queryKey: ['agreements'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-agreements'] });
       setOptionsModalVisible(false);
       Alert.alert('Success', 'Document status updated successfully.');
     },
@@ -105,8 +108,11 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
   };
 
   const handleUpload = async (tenantId: number) => {
-    if (isUploading) return;
+    // Mutex guard: prevents double-tap or concurrent picker sessions
+    if (isPickingRef.current || isUploading) return;
+    isPickingRef.current = true;
 
+    let asset: any = null;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
@@ -114,12 +120,20 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
       });
 
       if (result.canceled || !result.assets || result.assets.length === 0) {
-        return;
+        return; // user cancelled — finally block resets the ref
       }
+      asset = result.assets[0];
+    } catch (pickerErr: any) {
+      Alert.alert('Picker Error', pickerErr?.message || 'Could not open document picker.');
+      return;
+    } finally {
+      // Always release the picking mutex, even on cancel/error
+      isPickingRef.current = false;
+    }
 
-      setIsUploading(true);
-      const asset = result.assets[0];
-
+    if (!asset) return;
+    setIsUploading(true);
+    try {
       // 1. Request presigned upload URL from backend for the chosen tenant
       const presignRes = await apiClient.post('/documents/presign-upload', {
         document_type: 'lease_agreement',
@@ -155,7 +169,10 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
         tenant_id: tenantId,
       });
 
+      // Invalidate document list + agreement pipeline (AgreementWorkspace, TenantAgreementGate, owner view)
       queryClient.invalidateQueries({ queryKey: ['documents'] });
+      queryClient.invalidateQueries({ queryKey: ['agreements'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-agreements'] });
       Alert.alert('Success', 'Legal document uploaded to vault successfully.');
     } catch (err: any) {
       Alert.alert('Upload Failed', err.message || 'Unable to complete upload');
@@ -245,17 +262,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
     </TouchableOpacity>
   );
 
-  const handleBack = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      try {
-        navigation.navigate('MoreHome');
-      } catch (_) {
-        navigation.navigate('Dashboard');
-      }
-    }
-  };
+  const handleBack = () => navigation.goBack();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>

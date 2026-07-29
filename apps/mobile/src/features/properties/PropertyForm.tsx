@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import { apiClient, parseApiError } from '../../api/client';
@@ -151,15 +151,18 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
         return (await apiClient.post('/properties', payload)).data;
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['properties'] });
+    onSuccess: async () => {
+      // On Android (Hermes) invalidateQueries is fire-and-forget and the list
+      // can re-mount before the refetch resolves. Awaiting refetchQueries ensures
+      // the cache is fresh before navigating back, on both iOS and Android.
+      await queryClient.refetchQueries({ queryKey: ['properties'] });
       if (isEdit) {
-        queryClient.invalidateQueries({ queryKey: ['property', id] });
+        await queryClient.refetchQueries({ queryKey: ['property', id] });
       }
       showToast(isEdit ? 'Property updated successfully' : 'Property created successfully', 'success');
       setTimeout(() => {
         navigation.goBack();
-      }, 1000);
+      }, Platform.OS === 'android' ? 600 : 1000);
     },
     onError: (err: any) => {
       showToast(parseApiError(err).message || 'Submission failed', 'error');
@@ -192,8 +195,10 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
       city: city.trim() || null,
       state: state.trim() || null,
       pincode: pincode.trim() || null,
-      latitude,
-      longitude,
+      // Explicitly coerce to number or null — Android Hermes can pass state
+      // variables as string "null" if they were initialised from route.params
+      latitude: typeof latitude === 'number' ? latitude : null,
+      longitude: typeof longitude === 'number' ? longitude : null,
     };
 
     if (isEdit) {

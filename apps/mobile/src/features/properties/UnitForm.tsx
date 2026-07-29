@@ -105,9 +105,14 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['property-units', propertyId] });
+      queryClient.invalidateQueries({ queryKey: ['property-units'] }); // broad sweep for all unit list consumers
       if (isEdit) {
         queryClient.invalidateQueries({ queryKey: ['unit', id] });
       }
+      // Sync bed-centric analytics and inventory counts across all portals
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-inventory-units'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-inventory-beds'] });
       showToast(isEdit ? 'Unit updated successfully' : 'Unit created successfully', 'success');
       setTimeout(() => {
         navigation.goBack();
@@ -126,7 +131,7 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
     if (!unitType || unitType.length < 2 || unitType.length > 20) {
       newErrors.unitType = 'Unit type is required (2-20 chars)';
     }
-    
+
     const rentNum = parseFloat(rent);
     if (isNaN(rentNum) || rentNum < 0) {
       newErrors.rent = 'Rent must be a valid positive number';
@@ -180,7 +185,7 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
-      
+
       <View style={styles.header}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color={colors.primary} />
@@ -317,7 +322,6 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
           style={{ marginTop: space.md }}
         />
       </ScrollView>
-    
       </ResponsiveContainer>
     </SafeAreaView>
   );

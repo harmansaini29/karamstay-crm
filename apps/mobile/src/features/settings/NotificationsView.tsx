@@ -55,17 +55,7 @@ export const NotificationsView: React.FC<{ navigation: any }> = ({ navigation })
     readMutation.mutate(id);
   };
 
-  const handleBack = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      try {
-        navigation.navigate('MoreHome');
-      } catch (_) {
-        navigation.navigate('Dashboard');
-      }
-    }
-  };
+  const handleBack = () => navigation.goBack();
 
   if (isLoading) return <LoadingSkeleton variant="list" />;
   if (isError) return <ErrorState message={parseApiError(error).message} onRetry={refetch} />;
@@ -117,7 +107,7 @@ export const NotificationsView: React.FC<{ navigation: any }> = ({ navigation })
         data={notifications}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderNotifItem}
-        contentContainerStyle={{ padding: space.lg }}
+        contentContainerStyle={{ padding: space.lg, paddingBottom: 24 }}
         ListEmptyComponent={
           <EmptyState
             title="All Caught Up!"

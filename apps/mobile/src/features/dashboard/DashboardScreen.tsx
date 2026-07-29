@@ -18,6 +18,7 @@ import { Badge } from '../../components/Badge';
 import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { Ionicons } from '@expo/vector-icons';
+import { useFinancialMask } from '../../hooks/useFinancialMask';
 
 interface Property {
   id: number;
@@ -47,6 +48,16 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
   const { colors, font, space, radius, shadows, isDark } = useTheme();
   const { user } = useAuth();
   const isManager = user?.role?.name === 'manager';
+  const isStaff = user?.role?.name === 'staff';
+
+  // Staff do not have a Finance tab — silently no-op instead of throwing
+  // 'The action NAVIGATE with payload {name:Finance} was not handled'
+  const navigateToFinance = () => {
+    if (!isStaff) navigation.navigate('Finance');
+  };
+
+  // Financial masking: staff see '••••' on revenue/dues tiles
+  const { maskAmount } = useFinancialMask();
 
   const activeTileShadow = isDark
     ? { ...shadows.sm, shadowColor: '#000000', shadowOpacity: 0.15 }
@@ -266,17 +277,17 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
     },
     {
       title: 'Revenue (Month)',
-      value: formatCurrency(analytics?.revenue_this_month || 0),
+      value: maskAmount(analytics?.revenue_this_month || 0),
       icon: 'cash-outline',
       color: semanticColor.success.solid,
-      onPress: () => navigation.navigate('Finance'),
+      onPress: navigateToFinance,
     },
     {
       title: 'Pending Dues',
-      value: formatCurrency(analytics?.pending_dues_total || 0),
+      value: maskAmount(analytics?.pending_dues_total || 0),
       icon: 'alert-circle-outline',
       color: semanticColor.warning.solid,
-      onPress: () => navigation.navigate('Finance'),
+      onPress: navigateToFinance,
     },
     {
       title: 'Open Tickets',
@@ -291,7 +302,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
         <ScrollView
-          contentContainerStyle={{ padding: space.lg }}
+          contentContainerStyle={{ padding: space.lg, paddingBottom: 90 }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
           }
@@ -532,7 +543,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
                 
                 <TouchableOpacity
                   style={styles.quickActionItem}
-                  onPress={() => navigation.navigate('Finance')}
+                  onPress={navigateToFinance}
                 >
                   <View style={[styles.actionIcon, { backgroundColor: semanticColor.success.solid }]}>
                     <Ionicons name="receipt" size={20} color="#FFFFFF" />
@@ -544,7 +555,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
 
                 <TouchableOpacity
                   style={styles.quickActionItem}
-                  onPress={() => navigation.navigate('Finance')}
+                  onPress={navigateToFinance}
                 >
                   <View style={[styles.actionIcon, { backgroundColor: semanticColor.warning.solid }]}>
                     <Ionicons name="wallet" size={20} color="#FFFFFF" />

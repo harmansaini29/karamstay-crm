@@ -13,6 +13,7 @@ import { BedDragGrid } from '../../components/BedDragGrid';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useFinancialMask } from '../../hooks/useFinancialMask';
 
 interface Unit {
   id: number;
@@ -169,6 +170,16 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
     }
   };
 
+  // ⚠️ All hooks must precede any conditional return (Rules of Hooks)
+  const { maskAmount } = useFinancialMask();
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    }).format(amount);
+
   if (isUnitLoading || (unit && unit.capacity > 1 && isBedsLoading)) {
     return <LoadingSkeleton variant="detail" />;
   }
@@ -181,14 +192,6 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
       />
     );
   }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
@@ -247,13 +250,13 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
             <View style={styles.infoCol}>
               <Text style={[styles.label, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Monthly Rent</Text>
               <Text style={[styles.value, { color: colors.primary, fontSize: font.h3.fontSize }]}>
-                {formatCurrency(unit.rent)}
+                {maskAmount(unit.rent)}
               </Text>
             </View>
             <View style={styles.infoCol}>
               <Text style={[styles.label, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Deposit</Text>
               <Text style={[styles.value, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
-                {formatCurrency(unit.deposit)}
+                {maskAmount(unit.deposit)}
               </Text>
             </View>
           </View>

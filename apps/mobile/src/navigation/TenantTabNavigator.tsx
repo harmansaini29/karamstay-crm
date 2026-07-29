@@ -1,5 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme } from '../theme/ThemeProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,8 +13,24 @@ import { TenantPaymentsScreen } from '../features/tenant-home/TenantPaymentsScre
 import { TenantDocumentsScreen } from '../features/tenant-home/TenantDocumentsScreen';
 import { TenantComplaintsScreen } from '../features/tenant-home/TenantComplaintsScreen';
 import { TenantProfileScreen } from '../features/tenant-home/TenantProfileScreen';
+import { TenantAgreementGate } from '../features/tenant-home/TenantAgreementGate';
+import { TenantAgreementForm } from '../features/tenants/TenantAgreementForm';
 
 const Tab = createBottomTabNavigator();
+const HomeStack = createNativeStackNavigator();
+
+// Home tab wrapped in a small stack for the agreement onboarding gate.
+// On first login the gate fires, checks for a pending agreement, and either
+// routes the tenant straight to the form or lets them through to Home.
+const HomeStackNavigator = () => (
+  <HomeStack.Navigator screenOptions={{ headerShown: false }}>
+    {/* 'AgreementGate' fires first and replaces to TenantDashboard or TenantAgreementFormScreen */}
+    <HomeStack.Screen name="AgreementGate" component={TenantAgreementGate} />
+    {/* Renamed from 'Home' → 'TenantDashboard' to avoid duplicate name with parent Tab.Screen 'Home' */}
+    <HomeStack.Screen name="TenantDashboard" component={TenantHomeScreen} />
+    <HomeStack.Screen name="TenantAgreementFormScreen" component={TenantAgreementForm} />
+  </HomeStack.Navigator>
+);
 
 export const TenantTabNavigator: React.FC = () => {
   const { colors } = useTheme();
@@ -35,7 +52,9 @@ export const TenantTabNavigator: React.FC = () => {
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
+          position: 'absolute',
           backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.surface,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
@@ -61,7 +80,8 @@ export const TenantTabNavigator: React.FC = () => {
         },
       })}
     >
-      <Tab.Screen name="Home" component={TenantHomeScreen} />
+      {/* Home tab uses the agreement gate stack as its component */}
+      <Tab.Screen name="Home" component={HomeStackNavigator} />
       <Tab.Screen name="Payments" component={TenantPaymentsScreen} />
       <Tab.Screen name="Documents" component={TenantDocumentsScreen} />
       <Tab.Screen name="Complaints" component={TenantComplaintsScreen} />

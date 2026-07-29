@@ -73,17 +73,7 @@ export const PrivacyDataScreen: React.FC<{ navigation: any }> = ({ navigation })
     );
   };
 
-  const handleBack = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      try {
-        navigation.navigate('MoreHome');
-      } catch (_) {
-        navigation.navigate('Dashboard');
-      }
-    }
-  };
+  const handleBack = () => navigation.goBack();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>

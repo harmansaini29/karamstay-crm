@@ -53,6 +53,10 @@ export const RootNavigator: React.FC = () => {
                   <Stack.Screen name="TenantApp" component={TenantTabNavigator} />
                 ) : role === 'manager' ? (
                   <Stack.Screen name="ManagerApp" component={ManagerTabNavigator} />
+                ) : role === 'staff' ? (
+                  // Staff portal: scoped access via StaffTabNavigator;
+                  // MoreHome.isOwner guard hides admin-only menu items
+                  <Stack.Screen name="StaffApp" component={StaffTabNavigator} />
                 ) : (
                   <Stack.Screen name="StaffApp" component={StaffTabNavigator} />
                 )}
