@@ -3,8 +3,13 @@ import io
 from typing import Any
 
 from fastapi import Response
-from fpdf import FPDF
-from fpdf.enums import XPos, YPos
+try:
+    from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+except ImportError:
+    FPDF = None  # type: ignore
+    XPos = None  # type: ignore
+    YPos = None  # type: ignore
 
 
 def rows_to_csv(rows: list[dict[str, Any]]) -> bytes:
@@ -18,6 +23,8 @@ def rows_to_csv(rows: list[dict[str, Any]]) -> bytes:
 
 
 def rows_to_pdf(title: str, rows: list[dict[str, Any]]) -> bytes:
+    if FPDF is None:
+        return rows_to_csv(rows)
     pdf = FPDF(orientation="L", format="A4")
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 14)

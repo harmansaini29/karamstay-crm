@@ -15,7 +15,7 @@ import { color as semanticColor } from '../theme/tokens';
 import { Ionicons } from '@expo/vector-icons';
 
 interface InputProps {
-  label: string;
+  label?: string;
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
@@ -28,6 +28,10 @@ interface InputProps {
   disabled?: boolean;
   autoComplete?: any;
   textContentType?: any;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  onFocus?: () => void;
+  onBlur?: () => void;
+  multiline?: boolean;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -44,6 +48,10 @@ export const Input: React.FC<InputProps> = ({
   disabled = false,
   autoComplete,
   textContentType,
+  autoCapitalize,
+  onFocus,
+  onBlur,
+  multiline,
 }) => {
   const { colors, radius, space, font } = useTheme();
   const [isFocused, setIsFocused] = useState(false);
@@ -86,7 +94,7 @@ export const Input: React.FC<InputProps> = ({
     const selectedOption = options.find((opt) => opt.value === value);
     return (
       <View style={containerStyle}>
-        <Text style={labelStyle}>{label}</Text>
+        {label ? <Text style={labelStyle}>{label}</Text> : null}
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => !disabled && setIsSelectOpen(true)}
@@ -159,7 +167,7 @@ export const Input: React.FC<InputProps> = ({
   const renderDate = () => {
     return (
       <View style={containerStyle}>
-        <Text style={labelStyle}>{label}</Text>
+        {label ? <Text style={labelStyle}>{label}</Text> : null}
         <View style={inputContainerStyle}>
           <TextInput
             style={textInputStyle}
@@ -191,7 +199,7 @@ export const Input: React.FC<InputProps> = ({
 
   return (
     <View style={containerStyle}>
-      <Text style={labelStyle}>{label}</Text>
+      {label ? <Text style={labelStyle}>{label}</Text> : null}
       <View style={inputContainerStyle}>
         <TextInput
           style={textInputStyle}
@@ -201,8 +209,16 @@ export const Input: React.FC<InputProps> = ({
           placeholderTextColor={colors.textMuted}
           secureTextEntry={secureTextEntry}
           keyboardType={keyboardType}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          autoCapitalize={autoCapitalize}
+          multiline={multiline}
+          onFocus={() => {
+            setIsFocused(true);
+            onFocus?.();
+          }}
+          onBlur={() => {
+            setIsFocused(false);
+            onBlur?.();
+          }}
           editable={!disabled}
           autoComplete={autoComplete}
           textContentType={textContentType}

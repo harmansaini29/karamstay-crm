@@ -114,5 +114,8 @@ class Bed(TimestampMixin, SoftDeleteMixin, AuditActorMixin, Base):
     unit_id: Mapped[int] = mapped_column(ForeignKey("units.id"), index=True, nullable=False)
     bed_no: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(24), index=True, nullable=False, default="vacant")
+    # Tiered room block: MASTER_BED | COMMON_BED | HALL (nullable for legacy rows)
+    room_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     unit: Mapped[Unit] = relationship(back_populates="beds")
+

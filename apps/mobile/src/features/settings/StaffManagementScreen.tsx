@@ -300,9 +300,10 @@ export const StaffManagementScreen: React.FC<{ navigation: any }> = ({ navigatio
         {/* List */}
         {staffList.length === 0 ? (
           <EmptyState
-            message="No staff members yet. Add your first staff member to grant them portal access."
-            actionLabel="Add Staff"
-            onAction={() => {
+            title="No Staff Members"
+            body="No staff members yet. Add your first staff member to grant them portal access."
+            ctaLabel="Add Staff"
+            onPress={() => {
               resetForm();
               setModalVisible(true);
             }}

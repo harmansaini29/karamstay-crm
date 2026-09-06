@@ -101,7 +101,7 @@ class PropertyService:
             unit_type=payload.unit_type,
             rent=payload.rent,
             deposit=payload.deposit,
-            capacity=payload.capacity,
+            capacity=payload.capacity,  # derived = MB + CB + H by schema validator
             notes=payload.notes,
             latitude=payload.latitude,
             longitude=payload.longitude,
@@ -109,7 +109,31 @@ class PropertyService:
             updated_by_id=current_user.id,
         )
         self.repository.add_unit(unit)
-        self.db.flush()
+        self.db.flush()  # unit.id is now available
+
+        # ── Deterministic bed generation ─────────────────────────────────────
+        # Each block is processed independently; capacity=0 → block skipped.
+        bed_blocks = [
+            (payload.master_bed_capacity, "MB", "MASTER_BED"),
+            (payload.common_bed_capacity, "CB", "COMMON_BED"),
+            (payload.hall_capacity,       "H",  "HALL"),
+        ]
+        beds_to_add: list[Bed] = []
+        for block_capacity, code, room_type in bed_blocks:
+            for i in range(1, block_capacity + 1):
+                beds_to_add.append(
+                    Bed(
+                        unit_id=unit.id,
+                        bed_no=f"Bed {code} {i}",
+                        status="vacant",
+                        room_type=room_type,
+                        created_by_id=current_user.id,
+                        updated_by_id=current_user.id,
+                    )
+                )
+        self.db.add_all(beds_to_add)
+        # ─────────────────────────────────────────────────────────────────────
+
         self.audit.record(
             user_id=current_user.id,
             action="unit.create",
@@ -117,8 +141,8 @@ class PropertyService:
             entity_id=unit.id,
         )
         self.db.commit()
-        self.db.refresh(unit)
-        return unit
+        return self.get_unit_for_user(unit.id, current_user)
+
 
     def get_unit_for_user(self, unit_id: int, current_user: User) -> Unit:
         unit = self.repository.get_unit(unit_id)
@@ -159,3 +183,138 @@ class PropertyService:
     def list_beds(self, unit_id: int, current_user: User) -> list[Bed]:
         self.get_unit_for_user(unit_id, current_user)
         return self.repository.list_beds(unit_id)
+
+    def assign_beds(
+        self,
+        unit_id: int,
+        payload: "BedAssign",
+        current_user: User,
+    ) -> list[Bed]:
+        """Atomically assign one or more beds to a tenant.
+
+        Raises:
+            HTTP 404 – any bed_id not found in this unit.
+            HTTP 409 – any bed is already OCCUPIED (double-booking guard).
+        Uses SELECT … WITH FOR UPDATE (row-level lock) to prevent race conditions
+        when two concurrent requests try to book the same bed.
+        """
+        from sqlalchemy import select
+        from app.features.properties.models import Bed  # avoid circular at module level
+
+        self.get_unit_for_user(unit_id, current_user)
+
+        beds: list[Bed] = []
+        try:
+            for bed_id in payload.bed_ids:
+                # Row-level lock: blocks concurrent transactions from reading stale status
+                stmt = (
+                    select(Bed)
+                    .where(Bed.id == bed_id, Bed.unit_id == unit_id, Bed.deleted_at.is_(None))
+                    .with_for_update()
+                )
+                bed = self.db.scalar(stmt)
+                if bed is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Bed {bed_id} not found in unit {unit_id}",
+                    )
+                if bed.status == "occupied":
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"Bed {bed.bed_no} is already occupied — cannot double-book",
+                    )
+                bed.status = "occupied"
+                bed.updated_by_id = current_user.id
+                beds.append(bed)
+
+            # Update parent unit status if all beds were previously vacant
+            unit = self.repository.get_unit(unit_id)
+            if unit:
+                all_unit_beds = self.repository.list_beds(unit_id)
+                occupied_count = sum(1 for b in all_unit_beds if b.status == "occupied")
+                unit.status = "occupied" if occupied_count > 0 else "vacant"
+                unit.updated_by_id = current_user.id
+
+            self.audit.record(
+                user_id=current_user.id,
+                action="beds.assign",
+                entity_type="unit",
+                entity_id=unit_id,
+                metadata={"bed_ids": payload.bed_ids, "tenant_id": payload.tenant_id},
+            )
+            self.db.commit()
+            for b in beds:
+                self.db.refresh(b)
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except Exception as exc:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Bed assignment failed: {exc}",
+            ) from exc
+        return beds
+
+    def vacate_beds(
+        self,
+        unit_id: int,
+        payload: "BedVacate",
+        current_user: User,
+    ) -> list[Bed]:
+        """Atomically vacate (unassign) one or more beds.
+
+        Resets each bed to VACANT. If all beds in the unit are now vacant,
+        sets the parent unit status back to 'vacant'.
+        """
+        from sqlalchemy import select
+        from app.features.properties.models import Bed
+
+        self.get_unit_for_user(unit_id, current_user)
+
+        beds: list[Bed] = []
+        try:
+            for bed_id in payload.bed_ids:
+                stmt = (
+                    select(Bed)
+                    .where(Bed.id == bed_id, Bed.unit_id == unit_id, Bed.deleted_at.is_(None))
+                    .with_for_update()
+                )
+                bed = self.db.scalar(stmt)
+                if bed is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Bed {bed_id} not found in unit {unit_id}",
+                    )
+                bed.status = "vacant"
+                bed.updated_by_id = current_user.id
+                beds.append(bed)
+
+            # Sync parent unit status
+            unit = self.repository.get_unit(unit_id)
+            if unit:
+                all_unit_beds = self.repository.list_beds(unit_id)
+                occupied_count = sum(1 for b in all_unit_beds if b.status == "occupied")
+                unit.status = "occupied" if occupied_count > 0 else "vacant"
+                unit.updated_by_id = current_user.id
+
+            self.audit.record(
+                user_id=current_user.id,
+                action="beds.vacate",
+                entity_type="unit",
+                entity_id=unit_id,
+                metadata={"bed_ids": payload.bed_ids},
+            )
+            self.db.commit()
+            for b in beds:
+                self.db.refresh(b)
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except Exception as exc:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Bed vacate failed: {exc}",
+            ) from exc
+        return beds

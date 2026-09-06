@@ -7,7 +7,9 @@ from app.db.session import get_db
 from app.features.auth.dependencies import require_roles
 from app.features.auth.models import User
 from app.features.properties.schemas import (
+    BedAssign,
     BedResponse,
+    BedVacate,
     PropertyCreate,
     PropertyResponse,
     PropertyUpdate,
@@ -109,3 +111,33 @@ def delete_unit(unit_id: int, current_user: OwnerUser, db: DbSession) -> Respons
 @router.get("/units/{unit_id}/beds", response_model=list[BedResponse])
 def list_beds(unit_id: int, current_user: OwnerManagerUser, db: DbSession) -> list[BedResponse]:
     return PropertyService(db).list_beds(unit_id, current_user)
+
+
+@router.post(
+    "/units/{unit_id}/beds/assign",
+    response_model=list[BedResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Atomically assign one or more beds to a tenant (single & multi-bed merge)",
+)
+def assign_beds(
+    unit_id: int,
+    payload: BedAssign,
+    current_user: OwnerManagerUser,
+    db: DbSession,
+) -> list[BedResponse]:
+    return PropertyService(db).assign_beds(unit_id, payload, current_user)
+
+
+@router.post(
+    "/units/{unit_id}/beds/vacate",
+    response_model=list[BedResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Vacate one or more beds — resets to VACANT and syncs parent unit status",
+)
+def vacate_beds(
+    unit_id: int,
+    payload: BedVacate,
+    current_user: OwnerManagerUser,
+    db: DbSession,
+) -> list[BedResponse]:
+    return PropertyService(db).vacate_beds(unit_id, payload, current_user)

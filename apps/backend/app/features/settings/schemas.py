@@ -20,13 +20,7 @@ class SettingsResponse(BaseModel):
 
 class SettingsUpdate(BaseModel):
     late_fee_grace_days: int | None = Field(default=None, ge=0, le=30)
-    late_fee_percent_per_day: Decimal | None = Field(
-        default=None,
-        ge=0,
-        le=10,
-        max_digits=5,
-        decimal_places=2,
-    )
+    late_fee_percent_per_day: Decimal | None = Field(default=None, ge=0, le=10)
     agreement_reminder_days: list[int] | None = None
     brand_name: str | None = Field(default=None, min_length=1, max_length=120)
     whatsapp_otp_template: str | None = Field(default=None, min_length=1, max_length=120)

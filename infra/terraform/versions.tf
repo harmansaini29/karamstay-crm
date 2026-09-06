@@ -1,4 +1,4 @@
-terraform {
+﻿terraform {
   required_version = ">= 1.7.0, < 2.0.0"
 
   required_providers {
@@ -10,23 +10,18 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
-    null = {
-      source  = "hashicorp/null"
-      version = "~> 3.2"
-    }
   }
 
-  # Uncomment and configure a remote backend before running this against a
-  # real AWS account. Local state is fine for a first `plan`, but for any
-  # team/CI usage you want state in S3 + a DynamoDB lock table (or Terraform
-  # Cloud). This is intentionally left as a template, not wired up, since we
-  # don't know the client's preferred backend/account layout yet.
+  # Remote state in S3 + DynamoDB lock — uncomment after creating the
+  # tfstate bucket and lock table (see infra/runbook.md Step 0).
+  # This MUST be configured before sharing Terraform with a team or running
+  # from CI/CD, so state is never stored on a local machine.
   #
   # backend "s3" {
-  #   bucket         = "REPLACE-ME-karamstay-tfstate"
+  #   bucket         = "karamstay-tfstate-907079642634"
   #   key            = "backend/prod/terraform.tfstate"
   #   region         = "ap-south-1"
-  #   dynamodb_table = "REPLACE-ME-karamstay-tflock"
+  #   dynamodb_table = "karamstay-tflock"
   #   encrypt        = true
   # }
 }

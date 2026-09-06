@@ -1,18 +1,18 @@
-name: Backend CI/CD
+﻿name: Backend CI/CD
 
-# Test-and-lint on every push/PR that touches the backend. Build+push to ECR
-# and deploy to App Runner only happen on pushes to main, and deploy is
-# gated behind a "production" GitHub Environment that requires a human
-# approval (configure that under Settings -> Environments in the repo —
-# this workflow file alone does not grant approval).
+# Lint and test on every push/PR touching the backend.
+# Build + push to ECR and deploy to ECS on pushes to main only,
+# gated behind the 'production' GitHub Environment (requires human approval —
+# configure under Settings -> Environments).
 #
-# Required repo configuration (see infra/runbook.md for details):
-#   Variables (Settings -> Secrets and variables -> Actions -> Variables):
-#     AWS_REGION                 e.g. ap-south-1
-#     AWS_OIDC_ROLE_ARN          IAM role ARN this workflow assumes via OIDC
-#     ECR_REPOSITORY_URL         output of `terraform output ecr_repository_url`
-#     APPRUNNER_SERVICE_ARN      output of `terraform output apprunner_service_arn`
-#   No static AWS access keys are used anywhere in this workflow.
+# Required repo variables (Settings -> Secrets and variables -> Actions -> Variables tab):
+#   AWS_REGION              e.g. ap-south-1
+#   AWS_OIDC_ROLE_ARN       output of 	erraform output github_actions_role_arn
+#   ECR_REPOSITORY_URL      output of 	erraform output ecr_repository_url
+#   ECS_CLUSTER_NAME        output of 	erraform output ecs_cluster_name
+#   ECS_SERVICE_NAME        output of 	erraform output ecs_service_name
+#
+# No static AWS access keys are stored anywhere in this workflow.
 
 on:
   push:
@@ -64,17 +64,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
-      # No explicit "wait for postgres" step needed: the `options:
-      # --health-cmd=...` block on the postgres service above makes GitHub
-      # Actions block these steps from starting until the container reports
-      # healthy.
-      - name: Run migrations against the service container
+      - name: Run migrations
         run: alembic upgrade head
 
       - name: Lint (ruff)
@@ -84,22 +80,21 @@ jobs:
         run: pytest
 
   build-and-push:
-    name: Build & push image
+    name: Build & push image to ECR
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
-      id-token: write # required for OIDC -> AssumeRoleWithWebIdentity
+      id-token: write   # required for OIDC AssumeRoleWithWebIdentity
       contents: read
     outputs:
-      image_uri: ${{ steps.image.outputs.image_uri }}
-      image_tag: ${{ github.sha }}
+      image_uri: ${{ steps.push.outputs.image_uri }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC, no static keys)
+      - name: Configure AWS credentials (OIDC — no static keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
@@ -110,27 +105,24 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build image
+        working-directory: ${{ github.workspace }}
         run: |
           docker build \
             -f apps/backend/Dockerfile \
             -t "${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}" \
             apps/backend
-        working-directory: ${{ github.workspace }}
 
       - name: Push image to ECR
-        id: image
+        id: push
         run: |
           docker push "${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}"
           echo "image_uri=${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
   deploy:
-    name: Deploy to App Runner
+    name: Deploy to Amazon ECS
     needs: build-and-push
     runs-on: ubuntu-latest
-    # Requires a repo Environment named "production" configured with
-    # required reviewers under Settings -> Environments. The job will pause
-    # here until someone approves it.
-    environment: production
+    environment: production          # pauses for human approval in GitHub UI
     concurrency:
       group: backend-prod-deploy
       cancel-in-progress: false
@@ -139,34 +131,25 @@ jobs:
       contents: read
 
     steps:
-      - name: Configure AWS credentials (OIDC, no static keys)
+      - name: Configure AWS credentials (OIDC — no static keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Point App Runner at the new image
-        run: |
-          aws apprunner update-service \
-            --service-arn "${{ vars.APPRUNNER_SERVICE_ARN }}" \
-            --source-configuration "{\"ImageRepository\":{\"ImageIdentifier\":\"${{ needs.build-and-push.outputs.image_uri }}\",\"ImageRepositoryType\":\"ECR\"}}"
+      - name: Update ECS task definition with new image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition-family: karamstay-prod
+          container-name: api
+          image: ${{ needs.build-and-push.outputs.image_uri }}
 
-      - name: Wait for deployment to finish
-        run: |
-          for i in $(seq 1 60); do
-            status=$(aws apprunner describe-service \
-              --service-arn "${{ vars.APPRUNNER_SERVICE_ARN }}" \
-              --query "Service.Status" --output text)
-            echo "Service status: $status"
-            if [ "$status" = "RUNNING" ]; then
-              echo "Deployment finished successfully."
-              exit 0
-            fi
-            if [ "$status" != "OPERATION_IN_PROGRESS" ]; then
-              echo "Unexpected service status: $status" >&2
-              exit 1
-            fi
-            sleep 15
-          done
-          echo "Timed out waiting for App Runner deployment to finish" >&2
-          exit 1
+      - name: Deploy to ECS service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_NAME }}
+          cluster: ${{ vars.ECS_CLUSTER_NAME }}
+          wait-for-service-stability: true
+          wait-for-minutes: 15

@@ -72,6 +72,7 @@ docs/
 # Keep only important markdown files if needed
 !README.md
 !.env.example
+!infra/runbook.md
 
 # ==========================================
 # Build Outputs
@@ -114,6 +115,9 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 .terraform.lock.hcl
+
+# Real tfvars with actual domain/email values — NEVER commit this
+infra/terraform/environments/prod.tfvars
 
 # ==========================================
 # Docker

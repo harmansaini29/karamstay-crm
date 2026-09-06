@@ -197,7 +197,15 @@ export const StaffTabNavigator: React.FC = () => {
         />
       )}
 
-      <Tab.Screen name="More" component={MoreStack} />
+      <Tab.Screen
+        name="More"
+        component={MoreStack}
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            navigation.navigate('More', { screen: 'MoreHome' });
+          },
+        })}
+      />
     </Tab.Navigator>
   );
 };

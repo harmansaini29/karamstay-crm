@@ -30,7 +30,9 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
   const [floor, setFloor] = useState('');
   const [rent, setRent] = useState('');
   const [deposit, setDeposit] = useState('');
-  const [capacity, setCapacity] = useState('1');
+  const [masterBedCapacity, setMasterBedCapacity] = useState('0');
+  const [commonBedCapacity, setCommonBedCapacity] = useState('0');
+  const [hallCapacity, setHallCapacity] = useState('0');
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState('vacant');
   const [latitude, setLatitude] = useState<number | null>(null);
@@ -66,7 +68,11 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
       setFloor(unit.floor || '');
       setRent(String(unit.rent));
       setDeposit(String(unit.deposit));
-      setCapacity(String(unit.capacity));
+      // Distribute legacy unit.capacity into masterBedCapacity for display.
+      // commonBedCapacity + hallCapacity default 0; owner can redistribute on edit.
+      setMasterBedCapacity(String(unit.capacity ?? 0));
+      setCommonBedCapacity('0');
+      setHallCapacity('0');
       setNotes(unit.notes || '');
       setStatus(unit.status);
       setLatitude(unit.latitude || null);
@@ -142,9 +148,17 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
       newErrors.deposit = 'Deposit must be a valid positive number';
     }
 
-    const capacityNum = parseInt(capacity);
-    if (isNaN(capacityNum) || capacityNum <= 0) {
-      newErrors.capacity = 'Capacity must be at least 1';
+    const mbNum = parseInt(masterBedCapacity, 10);
+    const cbNum = parseInt(commonBedCapacity, 10);
+    const hNum  = parseInt(hallCapacity, 10);
+
+    if (isNaN(mbNum) || mbNum < 0) newErrors.masterBedCapacity = 'Master Bed must be 0 or more';
+    if (isNaN(cbNum) || cbNum < 0) newErrors.commonBedCapacity = 'Common Bed must be 0 or more';
+    if (isNaN(hNum)  || hNum  < 0) newErrors.hallCapacity       = 'Hall must be 0 or more';
+
+    const totalCapacity = (isNaN(mbNum) ? 0 : mbNum) + (isNaN(cbNum) ? 0 : cbNum) + (isNaN(hNum) ? 0 : hNum);
+    if (totalCapacity <= 0) {
+      newErrors.masterBedCapacity = 'Total capacity must be at least 1 bed across all blocks';
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -160,7 +174,10 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
       floor: floor.trim() || null,
       rent: rentNum,
       deposit: depositNum,
-      capacity: capacityNum,
+      master_bed_capacity: mbNum,
+      common_bed_capacity: cbNum,
+      hall_capacity: hNum,
+      capacity: totalCapacity,
       notes: notes.trim() || null,
       latitude,
       longitude,
@@ -257,14 +274,39 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
           />
         </View>
 
-        <Input
-          label="Max Capacity"
-          value={capacity}
-          onChangeText={setCapacity}
-          placeholder="e.g. 2"
-          keyboardType="numeric"
-          error={errors.capacity}
-        />
+        {/* Bed Block Capacity Row */}
+        <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: 6, marginTop: 4, fontWeight: '600', letterSpacing: 0.5 }}>
+          BED BLOCKS (0 = skip)
+        </Text>
+        <View style={[styles.row, { gap: 8 }]}>
+          <Input
+            label="Master Bed (MB)"
+            value={masterBedCapacity}
+            onChangeText={setMasterBedCapacity}
+            placeholder="0"
+            keyboardType="numeric"
+            style={{ flex: 1 }}
+            error={errors.masterBedCapacity}
+          />
+          <Input
+            label="Common Bed (CB)"
+            value={commonBedCapacity}
+            onChangeText={setCommonBedCapacity}
+            placeholder="0"
+            keyboardType="numeric"
+            style={{ flex: 1 }}
+            error={errors.commonBedCapacity}
+          />
+          <Input
+            label="Hall (H)"
+            value={hallCapacity}
+            onChangeText={setHallCapacity}
+            placeholder="0"
+            keyboardType="numeric"
+            style={{ flex: 1 }}
+            error={errors.hallCapacity}
+          />
+        </View>
 
         <TouchableOpacity
           onPress={handleDropPin}

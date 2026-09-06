@@ -1,4 +1,4 @@
-########################################
+﻿########################################
 # Core / naming
 ########################################
 
@@ -8,14 +8,20 @@ variable "aws_region" {
   default     = "ap-south-1"
 }
 
+variable "aws_account_id" {
+  description = "Your AWS account ID (12-digit number). Used to scope IAM resources and S3 bucket names."
+  type        = string
+  default     = "907079642634"
+}
+
 variable "app_name" {
-  description = "Short name used to prefix/tag all resources (e.g. \"karamstay\")."
+  description = "Short name used to prefix/tag all resources."
   type        = string
   default     = "karamstay"
 }
 
 variable "environment" {
-  description = "Deployment environment name, used in resource names, tags, and the SSM parameter path prefix (/{app_name}/{environment}/...)."
+  description = "Deployment environment name, used in resource names, tags, and SSM paths."
   type        = string
   default     = "prod"
 }
@@ -25,18 +31,12 @@ variable "environment" {
 ########################################
 
 variable "domain_name" {
-  description = <<-EOT
-    Client-owned custom domain the App Runner service will be reachable at
-    (e.g. "api.karamstay.com"). App Runner provisions and validates its own
-    ACM certificate for this domain automatically — you don't supply a
-    certificate ARN, you just add the DNS validation CNAME records that
-    Terraform outputs after applying (see outputs.tf).
-  EOT
+  description = "Custom domain for the ALB (e.g. api.karamstay.com). Used for ACM certificate."
   type        = string
 }
 
 variable "enable_www_subdomain" {
-  description = "Whether App Runner should also provision/validate the www. subdomain of domain_name."
+  description = "Whether to also create a www. subdomain certificate SAN."
   type        = bool
   default     = false
 }
@@ -46,48 +46,48 @@ variable "enable_www_subdomain" {
 ########################################
 
 variable "alert_email" {
-  description = "Email address that receives AWS Budgets alerts (via SNS subscription). The subscription requires manual confirmation via a link emailed by AWS after the first apply."
+  description = "Email address that receives AWS Budgets alerts via SNS."
   type        = string
 }
 
 variable "budget_threshold_low_usd" {
-  description = "First (lowest) monthly cost threshold, in USD, that triggers a budget alert email."
-  type        = number
-  default     = 25
+  type    = number
+  default = 25
 }
 
 variable "budget_threshold_medium_usd" {
-  description = "Second monthly cost threshold, in USD, that triggers a budget alert email."
-  type        = number
-  default     = 50
+  type    = number
+  default = 50
 }
 
 variable "budget_threshold_high_usd" {
-  description = "Third (highest) monthly cost threshold, in USD, that triggers a budget alert email."
-  type        = number
-  default     = 75
+  type    = number
+  default = 75
 }
 
 variable "monthly_budget_limit_usd" {
-  description = "The overall monthly budget amount tracked by AWS Budgets, in USD. Should be >= budget_threshold_high_usd."
-  type        = number
-  default     = 100
+  type    = number
+  default = 100
 }
 
 ########################################
-# WAF
+# WAF (disabled by default to save ~5 USD/mo)
 ########################################
 
+variable "enable_waf" {
+  description = "Set true to attach WAFv2 WebACL rate limiting in front of the ALB. Adds ~5 USD/month."
+  type        = bool
+  default     = false
+}
+
 variable "waf_rate_limit_requests" {
-  description = "Max requests from a single IP within waf_rate_limit_window_seconds before AWS WAF starts blocking that IP in front of App Runner."
-  type        = number
-  default     = 700
+  type    = number
+  default = 700
 }
 
 variable "waf_rate_limit_window_seconds" {
-  description = "Evaluation window (in seconds) for the WAF rate-based rule. AWS WAF supports 60, 120, 300, or 600."
-  type        = number
-  default     = 300
+  type    = number
+  default = 300
 }
 
 ########################################
@@ -95,13 +95,18 @@ variable "waf_rate_limit_window_seconds" {
 ########################################
 
 variable "vpc_cidr" {
-  description = "CIDR block for the VPC. Only used privately by RDS + the App Runner VPC connector; there is no NAT/IGW, so this never needs to be internet-routable."
-  type        = string
-  default     = "10.20.0.0/16"
+  type    = string
+  default = "10.20.0.0/16"
+}
+
+variable "public_subnet_cidrs" {
+  description = "CIDR blocks for public subnets (ECS tasks + ALB). Zero NAT Gateway cost."
+  type        = list(string)
+  default     = ["10.20.10.0/24", "10.20.11.0/24"]
 }
 
 variable "private_subnet_cidrs" {
-  description = "CIDR blocks for the two private subnets (RDS subnet group + App Runner VPC connector), one per AZ."
+  description = "CIDR blocks for private subnets (RDS only)."
   type        = list(string)
   default     = ["10.20.1.0/24", "10.20.2.0/24"]
 }
@@ -111,93 +116,78 @@ variable "private_subnet_cidrs" {
 ########################################
 
 variable "db_instance_class" {
-  description = "RDS instance class."
+  description = "RDS instance class. db.t4g.micro is Free-Tier eligible for 12 months."
   type        = string
-  default     = "db.t4g.small"
+  default     = "db.t4g.micro"
 }
 
 variable "db_engine_version" {
-  description = "Postgres major/minor engine version for RDS."
-  type        = string
-  default     = "16"
+  type    = string
+  default = "16"
 }
 
 variable "db_allocated_storage" {
-  description = "Baseline provisioned storage for RDS, in GiB."
+  description = "Initial SSD storage in GiB. Free Tier includes 20 GiB."
   type        = number
-  default     = 30
+  default     = 20
 }
 
 variable "db_max_allocated_storage" {
-  description = "Ceiling for RDS storage autoscaling, in GiB. Set equal to db_allocated_storage to disable autoscaling."
-  type        = number
-  default     = 200
+  type    = number
+  default = 100
 }
 
 variable "db_backup_retention_period" {
-  description = "Number of days RDS automated backups are retained."
-  type        = number
-  default     = 7
+  type    = number
+  default = 7
 }
 
 variable "db_name" {
-  description = "Initial database name created on the RDS instance."
-  type        = string
-  default     = "karamstay"
+  type    = string
+  default = "karamstay"
 }
 
 variable "db_username" {
-  description = "Master username for the RDS instance. The master password is generated by Terraform (random_password) and never set by hand; it is written straight into the DATABASE_URL SSM parameter."
-  type        = string
-  default     = "karamstay"
+  type    = string
+  default = "karamstay"
 }
 
 ########################################
-# App Runner (compute)
+# ECS Fargate (compute)
 ########################################
 
-variable "apprunner_cpu" {
-  description = "App Runner instance CPU units. \"512\" = 0.5 vCPU."
+variable "ecs_cpu" {
+  description = "Fargate task CPU units (256 = 0.25 vCPU)."
+  type        = string
+  default     = "256"
+}
+
+variable "ecs_memory" {
+  description = "Fargate task memory in MiB (512 = 0.5 GB)."
   type        = string
   default     = "512"
 }
 
-variable "apprunner_memory" {
-  description = "App Runner instance memory, in MB. \"1024\" = 1 GB."
-  type        = string
-  default     = "1024"
-}
-
-variable "apprunner_min_size" {
-  description = "Minimum number of App Runner instances (auto scaling configuration MinSize)."
+variable "ecs_desired_count" {
+  description = "Number of running ECS Fargate tasks."
   type        = number
   default     = 1
 }
 
-variable "apprunner_max_size" {
-  description = "Maximum number of App Runner instances (auto scaling configuration MaxSize)."
-  type        = number
-  default     = 4
-}
-
-variable "apprunner_max_concurrency" {
-  description = "Maximum concurrent requests per App Runner instance before scaling out."
-  type        = number
-  default     = 100
-}
-
 variable "ecr_image_tag" {
-  description = <<-EOT
-    Image tag the aws_apprunner_service resource points at when Terraform
-    creates/updates it. In steady state, the CI/CD pipeline (see
-    .github/workflows/backend-ci-cd.yml) moves the running service onto new
-    git-SHA tags via `aws apprunner start-deployment` / update-service calls
-    directly, outside of Terraform, so this value only really matters for
-    the very first `terraform apply` (bootstrapping the service) and for
-    disaster-recovery re-applies.
-  EOT
+  description = "Bootstrap Docker image tag. CI/CD moves to git-SHA tags after first deploy."
   type        = string
   default     = "latest"
+}
+
+########################################
+# GitHub OIDC (CI/CD keyless auth)
+########################################
+
+variable "github_repository" {
+  description = "GitHub repo 'owner/repo' that GitHub Actions deploys from."
+  type        = string
+  default     = "DevKano98/KaramStay"
 }
 
 ########################################
@@ -205,32 +195,22 @@ variable "ecr_image_tag" {
 ########################################
 
 variable "cloudwatch_log_retention_days" {
-  description = "Retention period, in days, for the App Runner CloudWatch log group."
-  type        = number
-  default     = 30
+  type    = number
+  default = 30
 }
 
 ########################################
 # Application configuration (non-secret)
-#
-# These map 1:1 to apps/backend/.env.example and app/core/config.py. They are
-# passed to App Runner as plain runtime_environment_variables. Anything
-# secret (DATABASE_URL, JWT_SECRET_KEY, WhatsApp token, Firebase service
-# account JSON, ...) is provisioned as an SSM SecureString instead — see
-# main.tf's `local.computed_secrets` / `local.external_secrets` and the
-# aws_ssm_parameter resources.
 ########################################
 
 variable "app_display_name" {
-  description = "Human-readable app name, passed through as APP_NAME."
-  type        = string
-  default     = "KaramStay"
+  type    = string
+  default = "KaramStay"
 }
 
 variable "jwt_algorithm" {
-  description = "JWT signing algorithm."
-  type        = string
-  default     = "HS256"
+  type    = string
+  default = "HS256"
 }
 
 variable "access_token_expire_minutes" {
@@ -244,9 +224,8 @@ variable "refresh_token_expire_days" {
 }
 
 variable "backend_cors_origins" {
-  description = "JSON-encoded list of allowed CORS origins, e.g. [\"https://app.karamstay.com\"]."
-  type        = string
-  default     = "[]"
+  type    = string
+  default = "[]"
 }
 
 variable "whatsapp_api_base_url" {
@@ -290,7 +269,6 @@ variable "invoice_generation_day" {
 }
 
 variable "app_log_level" {
-  description = "Log level for the app/gunicorn process. Not currently read by app/core/config.py (extra=\"ignore\" makes this harmless) but wired through for when logging config lands."
-  type        = string
-  default     = "INFO"
+  type    = string
+  default = "INFO"
 }

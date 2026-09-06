@@ -1,5 +1,5 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.features.properties.models import Bed, ManagerPropertyAssignment, Property, Unit
 
@@ -35,14 +35,22 @@ class PropertyRepository:
         return property
 
     def list_units(self, property_id: int) -> list[Unit]:
-        statement = select(Unit).where(
-            Unit.property_id == property_id,
-            Unit.deleted_at.is_(None),
+        statement = (
+            select(Unit)
+            .options(selectinload(Unit.beds))
+            .where(
+                Unit.property_id == property_id,
+                Unit.deleted_at.is_(None),
+            )
         )
         return list(self.db.scalars(statement.order_by(Unit.building, Unit.floor, Unit.unit_no)))
 
     def get_unit(self, unit_id: int) -> Unit | None:
-        statement = select(Unit).where(Unit.id == unit_id, Unit.deleted_at.is_(None))
+        statement = (
+            select(Unit)
+            .options(selectinload(Unit.beds))
+            .where(Unit.id == unit_id, Unit.deleted_at.is_(None))
+        )
         return self.db.scalar(statement)
 
     def add_unit(self, unit: Unit) -> Unit:

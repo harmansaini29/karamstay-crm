@@ -1,8 +1,13 @@
 from datetime import datetime
 from decimal import Decimal
 
-from fpdf import FPDF
-from fpdf.enums import XPos, YPos
+try:
+    from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+except ImportError:
+    FPDF = None  # type: ignore
+    XPos = None  # type: ignore
+    YPos = None  # type: ignore
 
 
 def generate_receipt_pdf(
@@ -14,6 +19,18 @@ def generate_receipt_pdf(
     payment_mode: str,
     paid_at: datetime,
 ) -> bytes:
+    if FPDF is None:
+        content = (
+            f"KaramStay Payment Receipt\n"
+            f"Receipt No: {receipt_no}\n"
+            f"Date: {paid_at.strftime('%d %b %Y %H:%M')}\n"
+            f"Tenant: {tenant_name}\n"
+            f"Unit: {unit_label}\n"
+            f"Amount Paid: Rs. {amount:,.2f}\n"
+            f"Payment Mode: {payment_mode}\n"
+        )
+        return content.encode("utf-8")
+
     pdf = FPDF(format="A4")
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 18)

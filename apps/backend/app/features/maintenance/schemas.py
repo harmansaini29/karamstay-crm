@@ -15,7 +15,7 @@ class MaintenanceTicketUpdate(BaseModel):
     status: str | None = Field(default=None, pattern="^(open|in_progress|completed|closed)$")
     priority: str | None = Field(default=None, pattern="^(low|medium|high|urgent)$")
     assigned_to_id: int | None = None
-    cost: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    cost: Decimal | None = Field(default=None, ge=0)
 
 
 class MaintenanceTicketResponse(BaseModel):

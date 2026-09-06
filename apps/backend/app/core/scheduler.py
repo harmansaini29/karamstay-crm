@@ -1,11 +1,20 @@
 import logging
 from collections.abc import Callable
-
-from apscheduler.schedulers.background import BackgroundScheduler
+from typing import Any
 
 logger = logging.getLogger("karamstay.scheduler")
 
-scheduler = BackgroundScheduler(timezone="UTC")
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    scheduler: Any = BackgroundScheduler(timezone="UTC")
+except ImportError:
+    class DummyScheduler:
+        running = False
+        def add_job(self, *args, **kwargs): pass
+        def start(self): self.running = True
+        def shutdown(self, *args, **kwargs): self.running = False
+        def get_jobs(self): return []
+    scheduler = DummyScheduler()
 
 
 def register_daily_job(*, job_id: str, hour: int, minute: int, func: Callable[[], None]) -> None:

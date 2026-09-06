@@ -2,22 +2,29 @@ import json
 import logging
 from typing import Any
 
-import firebase_admin
-from firebase_admin import credentials, messaging
+try:
+    import firebase_admin
+    from firebase_admin import credentials, messaging
+except ImportError:
+    firebase_admin = None  # type: ignore
+    credentials = None  # type: ignore
+    messaging = None  # type: ignore
 
 from app.core.config import settings
 
 logger = logging.getLogger("karamstay.notify.fcm")
 
-_app: firebase_admin.App | None = None
+_app: Any = None
 _init_attempted = False
 
 
 def is_configured() -> bool:
+    if firebase_admin is None:
+        return False
     return bool(settings.firebase_service_account_file or settings.firebase_service_account_json)
 
 
-def _get_app() -> firebase_admin.App | None:
+def _get_app() -> Any:
     global _app, _init_attempted
     if _app is not None or _init_attempted:
         return _app

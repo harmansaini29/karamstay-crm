@@ -1,20 +1,35 @@
-output "apprunner_service_url" {
-  description = "Default *.awsapprunner.com URL for the service (works immediately, before DNS/custom domain is configured)."
-  value       = "https://${aws_apprunner_service.app.service_url}"
+﻿output "alb_dns_name" {
+  description = "Public DNS of the Application Load Balancer. Point your domain_name CNAME at this value."
+  value       = aws_lb.main.dns_name
 }
 
-output "apprunner_service_arn" {
-  description = "ARN of the App Runner service — needed for `aws apprunner` CLI calls in CI/CD and for manual rollback."
-  value       = aws_apprunner_service.app.arn
+output "alb_zone_id" {
+  description = "Hosted zone ID of the ALB, for Route 53 alias records."
+  value       = aws_lb.main.zone_id
+}
+
+output "ecs_cluster_name" {
+  description = "ECS cluster name — required for 'aws ecs update-service' in CI/CD."
+  value       = aws_ecs_cluster.main.name
+}
+
+output "ecs_service_name" {
+  description = "ECS service name — required for 'aws ecs update-service' in CI/CD."
+  value       = aws_ecs_service.app.name
 }
 
 output "ecr_repository_url" {
-  description = "ECR repository URL that CI/CD should push images to (tag with the git SHA)."
+  description = "ECR repository URL that CI/CD should push Docker images to (tagged with git SHA)."
   value       = aws_ecr_repository.app.repository_url
 }
 
+output "s3_bucket_name" {
+  description = "Name of the S3 bucket used for KYC documents, agreements, and property photos."
+  value       = aws_s3_bucket.app.bucket
+}
+
 output "rds_endpoint" {
-  description = "RDS connection endpoint (host:port). Not internet-reachable — only resolvable/reachable from inside the VPC (i.e. from the App Runner VPC connector)."
+  description = "RDS connection endpoint (host:port). Reachable only from within the VPC (ECS tasks)."
   value       = aws_db_instance.postgres.endpoint
 }
 
@@ -23,38 +38,27 @@ output "rds_address" {
   value       = aws_db_instance.postgres.address
 }
 
-output "s3_bucket_name" {
-  description = "Name of the S3 bucket used for Legal Vault document storage."
-  value       = aws_s3_bucket.app.bucket
+output "github_actions_role_arn" {
+  description = "ARN of the IAM role GitHub Actions assumes via OIDC. Set this as AWS_OIDC_ROLE_ARN in GitHub repo variables."
+  value       = aws_iam_role.github_actions.arn
 }
 
-output "custom_domain_dns_target" {
-  description = "CNAME target to point domain_name at. Create a CNAME record: domain_name -> this value, at your DNS provider."
-  value       = aws_apprunner_custom_domain_association.this.dns_target
-}
-
-output "custom_domain_certificate_validation_records" {
-  description = <<-EOT
-    DNS records App Runner needs added at your DNS provider to validate and
-    issue the (App Runner-managed) ACM certificate for domain_name. Each
-    entry has name/type/value — add them as CNAME records before expecting
-    the custom domain to go ACTIVE. Run `terraform apply` once first to
-    populate this (it's only known after the association is created).
-  EOT
-  value       = aws_apprunner_custom_domain_association.this.certificate_validation_records
+output "acm_certificate_validation_options" {
+  description = "DNS CNAME records to add at your DNS provider to validate the ACM certificate. Add these before running 'terraform apply' on subsequent plans."
+  value       = aws_acm_certificate.api.domain_validation_options
 }
 
 output "ssm_parameter_path_prefix" {
-  description = "SSM parameter path prefix this app's secrets live under (and the only path the App Runner instance role can read)."
+  description = "SSM parameter path prefix this app's secrets live under."
   value       = local.ssm_prefix
 }
 
-output "waf_web_acl_arn" {
-  description = "ARN of the WAF Web ACL protecting the App Runner service."
-  value       = aws_wafv2_web_acl.app.arn
+output "budget_alerts_sns_topic_arn" {
+  description = "SNS topic ARN that AWS Budgets publishes to for cost alert emails."
+  value       = aws_sns_topic.budget_alerts.arn
 }
 
-output "budget_alerts_sns_topic_arn" {
-  description = "SNS topic ARN that AWS Budgets publishes to and alert_email is subscribed to."
-  value       = aws_sns_topic.budget_alerts.arn
+output "waf_web_acl_arn" {
+  description = "ARN of the WAF Web ACL (empty string when enable_waf = false)."
+  value       = var.enable_waf ? aws_wafv2_web_acl.app[0].arn : ""
 }

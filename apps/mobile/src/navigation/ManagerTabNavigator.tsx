@@ -14,6 +14,7 @@ import { ApprovalsQueueScreen } from '../features/settings/ApprovalsQueueScreen'
 import { StaffProfileScreen } from '../features/settings/StaffProfileScreen';
 import { PrivacyDataScreen } from '../features/settings/PrivacyDataScreen';
 import { PrivacyPolicyScreen, TermsOfServiceScreen } from '../features/auth/StaticWebDocs';
+import { NotificationsView } from '../features/settings/NotificationsView';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -29,8 +30,7 @@ const MaintenanceStack = () => (
     <Stack.Screen name="MaintenanceHome" component={MaintenanceView} />
   </Stack.Navigator>
 );
-
-const ApprovalsStack = () => (
+const ApprovalsStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="ApprovalsHome" component={ApprovalsQueueScreen} />
   </Stack.Navigator>
@@ -39,6 +39,7 @@ const ApprovalsStack = () => (
 const ProfileStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="ProfileHome" component={StaffProfileScreen} />
+    <Stack.Screen name="Notifications" component={NotificationsView} />
     <Stack.Screen name="PrivacyData" component={PrivacyDataScreen} />
     <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
     <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
@@ -95,7 +96,15 @@ export const ManagerTabNavigator: React.FC = () => {
       <Tab.Screen name="Dashboard" component={DashboardStack} />
       <Tab.Screen name="Maintenance" component={MaintenanceStack} />
       <Tab.Screen name="Approvals" component={ApprovalsStack} />
-      <Tab.Screen name="Profile" component={ProfileStack} />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileStack}
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            navigation.navigate('Profile', { screen: 'ProfileHome' });
+          },
+        })}
+      />
     </Tab.Navigator>
   );
 };

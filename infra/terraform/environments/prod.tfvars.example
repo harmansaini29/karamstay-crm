@@ -1,76 +1,81 @@
-# Copy this file to prod.tfvars (gitignored) and fill in real values before
-# running `terraform plan -var-file=environments/prod.tfvars`.
+﻿# Copy this file to prod.tfvars (gitignored) and fill in real values before
+# running 	erraform plan -var-file=environments/prod.tfvars.
 #
 # This file is committed as a template only — it contains no real secrets.
-# Nothing marked below is auto-applied; you run terraform yourself with your
-# own AWS credentials. See ../../runbook.md for the full walkthrough.
+# See infra/runbook.md for the full production launch walkthrough.
 
 ########################################
 # Core / naming
 ########################################
 
-aws_region  = "ap-south-1" # Mumbai — closest region to KaramStay's userbase
-app_name    = "karamstay"
-environment = "prod"
+aws_region     = "ap-south-1"           # Mumbai — closest region to KaramStay's India userbase
+aws_account_id = "907079642634"          # Your verified AWS account ID
+app_name       = "karamstay"
+environment    = "prod"
 
 ########################################
 # Custom domain / TLS
-# App Runner provisions + validates its own ACM certificate for this domain;
-# you don't need a certificate ARN, just a domain you control DNS for.
 ########################################
 
-domain_name          = "api.karamstay.com" # REPLACE ME with your real domain
+domain_name          = "api.karamstay.com"  # REPLACE ME — domain you control DNS for
 enable_www_subdomain = false
 
 ########################################
 # Alerting / budgets
 ########################################
 
-alert_email                 = "billing-alerts@karamstay.com" # REPLACE ME
+alert_email                 = "your-email@gmail.com"   # REPLACE ME — receives billing alerts
 budget_threshold_low_usd    = 25
 budget_threshold_medium_usd = 50
 budget_threshold_high_usd   = 75
 monthly_budget_limit_usd    = 100
 
 ########################################
-# WAF
+# WAF (optional — saves 5 USD/mo when false)
 ########################################
 
-waf_rate_limit_requests      = 700 # per-IP requests allowed...
-waf_rate_limit_window_seconds = 300 # ...within this many seconds (5 min)
+enable_waf                    = false    # Set true only when you need enterprise DDoS protection
+waf_rate_limit_requests       = 700
+waf_rate_limit_window_seconds = 300
 
 ########################################
 # Networking
 ########################################
 
 vpc_cidr             = "10.20.0.0/16"
+public_subnet_cidrs  = ["10.20.10.0/24", "10.20.11.0/24"]
 private_subnet_cidrs = ["10.20.1.0/24", "10.20.2.0/24"]
 
 ########################################
 # Database (RDS Postgres)
+# db.t4g.micro = Free Tier eligible for 12 months (750 hrs/mo)
 ########################################
 
-db_instance_class         = "db.t4g.small"
-db_engine_version         = "16"
-db_allocated_storage      = 30
-db_max_allocated_storage  = 200
+db_instance_class          = "db.t4g.micro"
+db_engine_version          = "16"
+db_allocated_storage       = 20         # GB — Free Tier includes 20 GB gp3
+db_max_allocated_storage   = 100
 db_backup_retention_period = 7
-db_name                   = "karamstay"
-db_username               = "karamstay"
-# NOTE: there is no db_password variable — Terraform generates a random
-# master password (random_password.db) and writes the full DATABASE_URL
-# straight into SSM. You never need to type or remember it.
+db_name                    = "karamstay"
+db_username                = "karamstay"
+# NOTE: No db_password variable — Terraform auto-generates a 32-char random
+# password and writes the full DATABASE_URL straight into SSM SecureString.
 
 ########################################
-# App Runner (compute)
+# ECS Fargate (compute)
+# 0.25 vCPU / 0.5 GB RAM — sufficient for 100-500 daily active users
 ########################################
 
-apprunner_cpu             = "512"  # 0.5 vCPU
-apprunner_memory          = "1024" # 1 GB
-apprunner_min_size        = 1
-apprunner_max_size        = 4
-apprunner_max_concurrency = 100
-ecr_image_tag             = "latest" # bootstrap tag; CI/CD moves the service onto SHA tags afterwards
+ecs_cpu           = "256"     # 0.25 vCPU
+ecs_memory        = "512"     # 0.5 GB RAM
+ecs_desired_count = 1
+ecr_image_tag     = "latest"  # Bootstrap tag — CI/CD switches to git-SHA tags on first deploy
+
+########################################
+# GitHub OIDC (keyless CI/CD)
+########################################
+
+github_repository = "DevKano98/KaramStay"
 
 ########################################
 # Observability
@@ -80,16 +85,13 @@ cloudwatch_log_retention_days = 30
 
 ########################################
 # Application configuration (non-secret)
-# Mirrors apps/backend/.env.example. Adjust to match your real CORS origins
-# etc. Secrets (DATABASE_URL, JWT_SECRET_KEY, WhatsApp token, Firebase JSON)
-# are NOT here — they live in SSM, see runbook.md.
 ########################################
 
 app_display_name               = "KaramStay"
 jwt_algorithm                   = "HS256"
 access_token_expire_minutes     = 15
 refresh_token_expire_days       = 30
-backend_cors_origins            = "[\"https://app.karamstay.com\"]" # REPLACE ME with your real frontend origin(s)
+backend_cors_origins            = "[\"https://app.karamstay.com\"]"  # REPLACE ME
 whatsapp_api_base_url            = "https://graph.facebook.com/v20.0"
 s3_presigned_url_expire_seconds = 300
 rate_limit_enabled               = true

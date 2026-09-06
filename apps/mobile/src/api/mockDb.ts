@@ -431,10 +431,10 @@ export const handleMockRequest = async (
     const roleName = email?.includes('accountant')
       ? 'accountant'
       : email?.includes('manager')
-      ? 'manager'
-      : email?.includes('staff')
-      ? 'staff'
-      : 'owner';
+        ? 'manager'
+        : email?.includes('staff')
+          ? 'staff'
+          : 'owner';
     mockUser = {
       id: 1,
       name: email?.split('@')[0]?.toUpperCase() || 'ADMIN',
@@ -541,6 +541,12 @@ export const handleMockRequest = async (
   if (propUnitsMatch && method === 'post') {
     const propId = parseInt(propUnitsMatch[1], 10);
     const body = JSON.parse(config.data || '{}');
+
+    const mb = parseInt(body.master_bed_capacity ?? 0, 10) || 0;
+    const cb = parseInt(body.common_bed_capacity ?? 0, 10) || 0;
+    const h = parseInt(body.hall_capacity ?? 0, 10) || 0;
+    const totalCapacity = (mb + cb + h) || parseInt(body.capacity ?? 1, 10) || 1;
+
     const newUnit = {
       id: mockUnits.length + 101,
       property_id: propId,
@@ -548,11 +554,52 @@ export const handleMockRequest = async (
       latitude: 28.6282,
       longitude: 77.3898,
       ...body,
+      capacity: totalCapacity,
+      master_bed_capacity: mb,
+      common_bed_capacity: cb,
+      hall_capacity: h,
     };
     mockUnits.push(newUnit);
-    const capacity = body.capacity || 1;
-    for (let i = 1; i <= capacity; i++) {
-      mockBeds.push({ id: mockBeds.length + 1, unit_id: newUnit.id, bed_no: `Bed ${i}`, status: 'vacant' });
+
+    // Deterministic 3-block bed generation matching backend service
+    if (mb + cb + h > 0) {
+      for (let i = 1; i <= mb; i++) {
+        mockBeds.push({
+          id: mockBeds.length + 1,
+          unit_id: newUnit.id,
+          bed_no: `Bed MB ${i}`,
+          status: 'vacant',
+          room_type: 'MASTER_BED',
+        });
+      }
+      for (let i = 1; i <= cb; i++) {
+        mockBeds.push({
+          id: mockBeds.length + 1,
+          unit_id: newUnit.id,
+          bed_no: `Bed CB ${i}`,
+          status: 'vacant',
+          room_type: 'COMMON_BED',
+        });
+      }
+      for (let i = 1; i <= h; i++) {
+        mockBeds.push({
+          id: mockBeds.length + 1,
+          unit_id: newUnit.id,
+          bed_no: `Bed H ${i}`,
+          status: 'vacant',
+          room_type: 'HALL',
+        });
+      }
+    } else {
+      for (let i = 1; i <= totalCapacity; i++) {
+        mockBeds.push({
+          id: mockBeds.length + 1,
+          unit_id: newUnit.id,
+          bed_no: `Bed ${i}`,
+          status: 'vacant',
+          room_type: 'MASTER_BED',
+        });
+      }
     }
     return { data: newUnit, status: 201 };
   }
@@ -563,7 +610,10 @@ export const handleMockRequest = async (
     const unitIndex = mockUnits.findIndex((u) => u.id === id);
     if (unitIndex === -1) return { data: {}, status: 404 };
 
-    if (method === 'get') return { data: mockUnits[unitIndex], status: 200 };
+    if (method === 'get') {
+      const unitBeds = mockBeds.filter((b) => b.unit_id === id);
+      return { data: { ...mockUnits[unitIndex], beds: unitBeds }, status: 200 };
+    }
     if (method === 'patch') {
       const body = JSON.parse(config.data || '{}');
       mockUnits[unitIndex] = { ...mockUnits[unitIndex], ...body };
@@ -576,6 +626,44 @@ export const handleMockRequest = async (
   }
 
   // --- BEDS INVENTORY ---
+  const bedsAssignMatch = url.match(/^\/units\/(\d+)\/beds\/assign$/);
+  if (bedsAssignMatch && method === 'post') {
+    const unitId = parseInt(bedsAssignMatch[1], 10);
+    const body = JSON.parse(config.data || '{}');
+    const bedIds: number[] = body.bed_ids || [];
+    const updatedBeds: any[] = [];
+    for (const bid of bedIds) {
+      const b = mockBeds.find((item) => item.id === bid && item.unit_id === unitId);
+      if (b) {
+        b.status = 'occupied';
+        updatedBeds.push(b);
+      }
+    }
+    const u = mockUnits.find((item) => item.id === unitId);
+    if (u) u.status = 'occupied';
+    return { data: updatedBeds, status: 200 };
+  }
+
+  const bedsVacateMatch = url.match(/^\/units\/(\d+)\/beds\/vacate$/);
+  if (bedsVacateMatch && method === 'post') {
+    const unitId = parseInt(bedsVacateMatch[1], 10);
+    const body = JSON.parse(config.data || '{}');
+    const bedIds: number[] = body.bed_ids || [];
+    const updatedBeds: any[] = [];
+    for (const bid of bedIds) {
+      const b = mockBeds.find((item) => item.id === bid && item.unit_id === unitId);
+      if (b) {
+        b.status = 'vacant';
+        updatedBeds.push(b);
+      }
+    }
+    const unitBeds = mockBeds.filter((item) => item.unit_id === unitId);
+    const anyOccupied = unitBeds.some((item) => item.status === 'occupied');
+    const u = mockUnits.find((item) => item.id === unitId);
+    if (u) u.status = anyOccupied ? 'occupied' : 'vacant';
+    return { data: updatedBeds, status: 200 };
+  }
+
   const bedsMatch = url.match(/^\/units\/(\d+)\/beds$/);
   if (bedsMatch && method === 'get') {
     const unitId = parseInt(bedsMatch[1], 10);

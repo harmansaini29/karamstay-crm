@@ -210,7 +210,7 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
               return;
             }
             const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: ImagePicker.MediaType.Images,
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
               quality: 0.85,
               allowsEditing: true,
             });
