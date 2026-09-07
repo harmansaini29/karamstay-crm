@@ -1,4 +1,4 @@
-﻿name: Backend CI/CD
+name: Backend CI/CD
 
 # Lint and test on every push/PR touching the backend.
 # Build + push to ECR and deploy to ECS on pushes to main only,
@@ -97,8 +97,8 @@ jobs:
       - name: Configure AWS credentials (OIDC — no static keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'ap-south-1' }}
 
       - name: Log in to Amazon ECR
         id: ecr-login
@@ -109,14 +109,14 @@ jobs:
         run: |
           docker build \
             -f apps/backend/Dockerfile \
-            -t "${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}" \
+            -t "${{ vars.ECR_REPOSITORY_URL || secrets.ECR_REPOSITORY_URL }}:${{ github.sha }}" \
             apps/backend
 
       - name: Push image to ECR
         id: push
         run: |
-          docker push "${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}"
-          echo "image_uri=${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          docker push "${{ vars.ECR_REPOSITORY_URL || secrets.ECR_REPOSITORY_URL }}:${{ github.sha }}"
+          echo "image_uri=${{ vars.ECR_REPOSITORY_URL || secrets.ECR_REPOSITORY_URL }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
   deploy:
     name: Deploy to Amazon ECS
@@ -134,8 +134,8 @@ jobs:
       - name: Configure AWS credentials (OIDC — no static keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'ap-south-1' }}
 
       - name: Update ECS task definition with new image
         id: task-def
@@ -149,7 +149,7 @@ jobs:
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ vars.ECS_SERVICE_NAME }}
-          cluster: ${{ vars.ECS_CLUSTER_NAME }}
+          service: ${{ vars.ECS_SERVICE_NAME || secrets.ECS_SERVICE_NAME }}
+          cluster: ${{ vars.ECS_CLUSTER_NAME || secrets.ECS_CLUSTER_NAME }}
           wait-for-service-stability: true
           wait-for-minutes: 15
