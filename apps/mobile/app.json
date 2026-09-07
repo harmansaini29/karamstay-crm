@@ -26,6 +26,12 @@
     },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "312cb2fe-4d93-4a08-8fa7-172066226683"
+      }
+    },
+    "owner": "harmansaini"
   }
 }
