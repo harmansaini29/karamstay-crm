@@ -9,7 +9,6 @@ Provides atomic S3 operations for:
 
 Gracefully falls back to LocalStorage when AWS S3 credentials are unset.
 """
-from typing import Any
 
 from app.core.storage import ObjectStorage, get_storage
 

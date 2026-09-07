@@ -2,7 +2,7 @@
 Unit and integration tests for ObjectStorage, LocalStorage fallback, and S3Service.
 """
 from app.core.s3 import S3Service, get_s3_service
-from app.core.storage import LocalStorage, S3Storage, get_storage
+from app.core.storage import LocalStorage, get_storage
 
 
 def test_local_storage_build_key_sanitizes_filename() -> None:

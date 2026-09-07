@@ -6,7 +6,14 @@ from app.core.security import utc_now
 from app.features.auth.models import User
 from app.features.properties.models import Bed, Property, Unit
 from app.features.properties.repository import PropertyRepository
-from app.features.properties.schemas import PropertyCreate, PropertyUpdate, UnitCreate, UnitUpdate
+from app.features.properties.schemas import (
+    BedAssign,
+    BedVacate,
+    PropertyCreate,
+    PropertyUpdate,
+    UnitCreate,
+    UnitUpdate,
+)
 
 
 class PropertyService:
@@ -187,7 +194,7 @@ class PropertyService:
     def assign_beds(
         self,
         unit_id: int,
-        payload: "BedAssign",
+        payload: BedAssign,
         current_user: User,
     ) -> list[Bed]:
         """Atomically assign one or more beds to a tenant.
@@ -199,6 +206,7 @@ class PropertyService:
         when two concurrent requests try to book the same bed.
         """
         from sqlalchemy import select
+
         from app.features.properties.models import Bed  # avoid circular at module level
 
         self.get_unit_for_user(unit_id, current_user)
@@ -259,7 +267,7 @@ class PropertyService:
     def vacate_beds(
         self,
         unit_id: int,
-        payload: "BedVacate",
+        payload: BedVacate,
         current_user: User,
     ) -> list[Bed]:
         """Atomically vacate (unassign) one or more beds.
@@ -268,6 +276,7 @@ class PropertyService:
         sets the parent unit status back to 'vacant'.
         """
         from sqlalchemy import select
+
         from app.features.properties.models import Bed
 
         self.get_unit_for_user(unit_id, current_user)

@@ -10,7 +10,6 @@ from pydantic import ValidationError
 
 from app.features.properties.schemas import BedAssign, BedVacate
 
-
 # ─── BedAssign Schema Validation ─────────────────────────────────────────────
 
 def test_bed_assign_requires_at_least_one_bed_id() -> None:
@@ -49,6 +48,7 @@ def test_bed_vacate_single_valid() -> None:
 def _get_or_create_owner(db_session, email="owner@test.com"):
     """Helper: create an owner user without external dependencies."""
     from sqlalchemy import select
+
     from app.features.auth.models import Role, User
 
     role = db_session.scalar(select(Role).where(Role.name == "owner"))
@@ -65,7 +65,6 @@ def _get_or_create_owner(db_session, email="owner@test.com"):
 
 def _seed_unit_with_beds(db_session, owner, n_master=2, n_common=1, n_hall=0):
     """Helper: create a property + unit + beds, return (unit, beds)."""
-    from decimal import Decimal
     from app.features.properties.models import Bed, Property, Unit
 
     prop = Property(
@@ -116,8 +115,8 @@ def _seed_unit_with_beds(db_session, owner, n_master=2, n_common=1, n_hall=0):
 
 def test_single_bed_assignment_vacant_to_occupied(db_session) -> None:
     """Single bed: VACANT → OCCUPIED after assign_beds call."""
-    from app.features.properties.service import PropertyService
     from app.features.properties.schemas import BedAssign
+    from app.features.properties.service import PropertyService
 
     owner = _get_or_create_owner(db_session, email="owner_sb@test.com")
     unit, beds = _seed_unit_with_beds(db_session, owner)
@@ -136,8 +135,8 @@ def test_single_bed_assignment_vacant_to_occupied(db_session) -> None:
 
 def test_multi_bed_merge_assignment(db_session) -> None:
     """Multi-bed: MB 1 + CB 1 assigned together — both become OCCUPIED atomically."""
-    from app.features.properties.service import PropertyService
     from app.features.properties.schemas import BedAssign
+    from app.features.properties.service import PropertyService
 
     owner = _get_or_create_owner(db_session, email="owner_mb@test.com")
     unit, beds = _seed_unit_with_beds(db_session, owner, n_master=2, n_common=1)
@@ -159,8 +158,9 @@ def test_multi_bed_merge_assignment(db_session) -> None:
 def test_assign_already_occupied_bed_raises_409(db_session) -> None:
     """Assigning a bed that's already OCCUPIED must raise HTTP 409 conflict."""
     from fastapi import HTTPException
-    from app.features.properties.service import PropertyService
+
     from app.features.properties.schemas import BedAssign
+    from app.features.properties.service import PropertyService
 
     owner = _get_or_create_owner(db_session, email="owner_dup@test.com")
     unit, beds = _seed_unit_with_beds(db_session, owner, n_master=1, n_common=0)
@@ -180,8 +180,8 @@ def test_assign_already_occupied_bed_raises_409(db_session) -> None:
 
 def test_vacate_resets_beds_to_vacant(db_session) -> None:
     """vacate_beds resets all assigned beds back to VACANT and unit status syncs."""
-    from app.features.properties.service import PropertyService
     from app.features.properties.schemas import BedAssign, BedVacate
+    from app.features.properties.service import PropertyService
 
     owner = _get_or_create_owner(db_session, email="owner_vac@test.com")
     unit, beds = _seed_unit_with_beds(db_session, owner, n_master=2, n_common=0)
@@ -205,8 +205,8 @@ def test_vacate_resets_beds_to_vacant(db_session) -> None:
 
 def test_vacate_partial_keeps_unit_occupied(db_session) -> None:
     """Vacating only some beds keeps unit status OCCUPIED if other beds remain."""
-    from app.features.properties.service import PropertyService
     from app.features.properties.schemas import BedAssign, BedVacate
+    from app.features.properties.service import PropertyService
 
     owner = _get_or_create_owner(db_session, email="owner_part@test.com")
     unit, beds = _seed_unit_with_beds(db_session, owner, n_master=2, n_common=1)
@@ -228,8 +228,9 @@ def test_vacate_partial_keeps_unit_occupied(db_session) -> None:
 def test_assign_nonexistent_bed_raises_404(db_session) -> None:
     """Assigning a bed ID that does not belong to the unit must raise HTTP 404."""
     from fastapi import HTTPException
-    from app.features.properties.service import PropertyService
+
     from app.features.properties.schemas import BedAssign
+    from app.features.properties.service import PropertyService
 
     owner = _get_or_create_owner(db_session, email="owner_404@test.com")
     unit, _ = _seed_unit_with_beds(db_session, owner, n_master=1, n_common=0)
@@ -249,7 +250,6 @@ def test_e2e_unit_creation_5_beds_assignment_and_counters_sync(db_session) -> No
     4. Assign Bed MB 1 to tenant -> bed becomes OCCUPIED, parent unit becomes OCCUPIED
     5. Vacate Bed MB 1 -> bed returns to VACANT, parent unit returns to VACANT
     """
-    from decimal import Decimal
     from app.features.properties.models import Property
     from app.features.properties.schemas import BedAssign, BedVacate, UnitCreate
     from app.features.properties.service import PropertyService

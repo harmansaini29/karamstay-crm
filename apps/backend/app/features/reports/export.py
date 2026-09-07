@@ -3,6 +3,7 @@ import io
 from typing import Any
 
 from fastapi import Response
+
 try:
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos

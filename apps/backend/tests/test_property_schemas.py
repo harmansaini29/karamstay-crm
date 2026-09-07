@@ -3,8 +3,7 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from app.features.properties.schemas import BedAssign, BedVacate, PropertyCreate, UnitCreate
-
+from app.features.properties.schemas import PropertyCreate, UnitCreate
 
 # ─── Pre-existing baseline tests (unchanged) ─────────────────────────────────
 
