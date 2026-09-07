@@ -1,4 +1,4 @@
-﻿# Copy this file to prod.tfvars (gitignored) and fill in real values before
+# Copy this file to prod.tfvars (gitignored) and fill in real values before
 # running 	erraform plan -var-file=environments/prod.tfvars.
 #
 # This file is committed as a template only — it contains no real secrets.
@@ -75,7 +75,7 @@ ecr_image_tag     = "latest"  # Bootstrap tag — CI/CD switches to git-SHA tags
 # GitHub OIDC (keyless CI/CD)
 ########################################
 
-github_repository = "DevKano98/KaramStay"
+github_repository = "harmansaini29/karamstay-crm"
 
 ########################################
 # Observability

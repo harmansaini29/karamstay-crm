@@ -193,7 +193,7 @@ variable "ecr_image_tag" {
 variable "github_repository" {
   description = "GitHub repo 'owner/repo' that GitHub Actions deploys from."
   type        = string
-  default     = "DevKano98/KaramStay"
+  default     = "harmansaini29/karamstay-crm"
 }
 
 ########################################
