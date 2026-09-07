@@ -12,7 +12,7 @@ name: Backend CI/CD
 #   ECS_CLUSTER_NAME        output of 	erraform output ecs_cluster_name
 #   ECS_SERVICE_NAME        output of 	erraform output ecs_service_name
 #
-# No static AWS access keys are stored anywhere in this workflow.
+# Authenticates using scoped IAM user (karamstay-ci) stored in GitHub Secrets.
 
 on:
   push:
