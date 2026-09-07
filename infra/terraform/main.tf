@@ -576,6 +576,7 @@ data "aws_iam_policy_document" "github_actions" {
       "ecs:DescribeServices",
       "ecs:RegisterTaskDefinition",
       "ecs:DescribeTaskDefinition",
+      "ecs:TagResource",
     ]
     resources = ["*"]
   }
