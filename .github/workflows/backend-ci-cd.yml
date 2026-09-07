@@ -28,6 +28,13 @@ on:
 permissions:
   contents: read
 
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'ap-south-1' }}
+  AWS_OIDC_ROLE_ARN: ${{ vars.AWS_OIDC_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN || 'arn:aws:iam::907079642634:role/karamstay-prod-github-actions' }}
+  ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL || secrets.ECR_REPOSITORY_URL || '907079642634.dkr.ecr.ap-south-1.amazonaws.com/karamstay-prod-backend' }}
+  ECS_CLUSTER_NAME: ${{ vars.ECS_CLUSTER_NAME || secrets.ECS_CLUSTER_NAME || 'karamstay-prod' }}
+  ECS_SERVICE_NAME: ${{ vars.ECS_SERVICE_NAME || secrets.ECS_SERVICE_NAME || 'karamstay-prod-service' }}
+
 defaults:
   run:
     working-directory: apps/backend
@@ -94,11 +101,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Debug AWS OIDC configuration
+        run: |
+          echo "Role to assume: ${{ env.AWS_OIDC_ROLE_ARN }}"
+          echo "AWS Region: ${{ env.AWS_REGION }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Ref: ${{ github.ref }}"
+
       - name: Configure AWS credentials (OIDC — no static keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'ap-south-1' }}
+          role-to-assume: ${{ env.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
 
       - name: Log in to Amazon ECR
         id: ecr-login
@@ -109,14 +124,14 @@ jobs:
         run: |
           docker build \
             -f apps/backend/Dockerfile \
-            -t "${{ vars.ECR_REPOSITORY_URL || secrets.ECR_REPOSITORY_URL }}:${{ github.sha }}" \
+            -t "${{ env.ECR_REPOSITORY_URL }}:${{ github.sha }}" \
             apps/backend
 
       - name: Push image to ECR
         id: push
         run: |
-          docker push "${{ vars.ECR_REPOSITORY_URL || secrets.ECR_REPOSITORY_URL }}:${{ github.sha }}"
-          echo "image_uri=${{ vars.ECR_REPOSITORY_URL || secrets.ECR_REPOSITORY_URL }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          docker push "${{ env.ECR_REPOSITORY_URL }}:${{ github.sha }}"
+          echo "image_uri=${{ env.ECR_REPOSITORY_URL }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
   deploy:
     name: Deploy to Amazon ECS
@@ -134,8 +149,9 @@ jobs:
       - name: Configure AWS credentials (OIDC — no static keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'ap-south-1' }}
+          role-to-assume: ${{ env.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
 
       - name: Update ECS task definition with new image
         id: task-def
@@ -149,7 +165,7 @@ jobs:
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ vars.ECS_SERVICE_NAME || secrets.ECS_SERVICE_NAME }}
-          cluster: ${{ vars.ECS_CLUSTER_NAME || secrets.ECS_CLUSTER_NAME }}
+          service: ${{ env.ECS_SERVICE_NAME }}
+          cluster: ${{ env.ECS_CLUSTER_NAME }}
           wait-for-service-stability: true
           wait-for-minutes: 15
