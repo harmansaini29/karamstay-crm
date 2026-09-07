@@ -1,4 +1,4 @@
-﻿########################################
+########################################
 # Core / naming
 ########################################
 
@@ -37,6 +37,12 @@ variable "domain_name" {
 
 variable "enable_www_subdomain" {
   description = "Whether to also create a www. subdomain certificate SAN."
+  type        = bool
+  default     = false
+}
+
+variable "enable_https" {
+  description = "Set to true once your custom domain DNS CNAME validation records are added and the ACM certificate is ISSUED. When false (default), ALB serves traffic on port 80 directly."
   type        = bool
   default     = false
 }
@@ -139,7 +145,7 @@ variable "db_max_allocated_storage" {
 
 variable "db_backup_retention_period" {
   type    = number
-  default = 7
+  default = 1
 }
 
 variable "db_name" {

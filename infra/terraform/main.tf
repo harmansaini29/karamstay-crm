@@ -1,16 +1,16 @@
-﻿########################################################################
-# KaramStay backend — production infrastructure
+########################################################################
+# KaramStay backend â€” production infrastructure
 #
-# Compute:   Amazon ECS (Fargate) — 0.25 vCPU / 0.5 GB, 1 task, no
+# Compute:   Amazon ECS (Fargate) â€” 0.25 vCPU / 0.5 GB, 1 task, no
 #            cold-start latency; APScheduler cron jobs run 24/7.
 # Network:   VPC with public subnets (ALB + ECS) and private subnets
-#            (RDS). Internet Gateway in public subnets — zero NAT
+#            (RDS). Internet Gateway in public subnets â€” zero NAT
 #            Gateway fees. S3 reached via free Gateway Endpoint.
 # Database:  RDS Postgres db.t4g.micro, 20 GB gp3, Free Tier eligible.
 # Registry:  Amazon ECR (immutable tags, scan on push, 20-image limit).
 # Secrets:   SSM Parameter Store SecureString (permanently free).
-# Storage:   S3 bucket — private, lifecycle rule for incomplete uploads.
-# CI/CD:     GitHub Actions OIDC — no static AWS keys anywhere.
+# Storage:   S3 bucket â€” private, lifecycle rule for incomplete uploads.
+# CI/CD:     GitHub Actions OIDC â€” no static AWS keys anywhere.
 # Guard:     AWS Budgets (SNS + email), optional WAF, 30-day log retention.
 ########################################################################
 
@@ -19,11 +19,11 @@ data "aws_availability_zones" "available" { state = "available" }
 data "aws_kms_alias" "ssm" { name = "alias/aws/ssm" }
 
 locals {
-  name_prefix = "-"
-  ssm_prefix  = "//"
+  name_prefix = "${var.app_name}-${var.environment}"
+  ssm_prefix  = "/${var.app_name}/${var.environment}"
   azs         = slice(data.aws_availability_zones.available.names, 0, 2)
 
-  database_url = "postgresql+psycopg://:@:/"
+  database_url = "postgresql+psycopg://${var.db_username}:${random_password.db.result}@${aws_db_instance.postgres.address}:${aws_db_instance.postgres.port}/${var.db_name}"
 
   computed_secrets = {
     database_url   = local.database_url
@@ -38,7 +38,7 @@ locals {
 }
 
 ########################################
-# Networking — VPC, public + private subnets, IGW
+# Networking â€” VPC, public + private subnets, IGW
 # Zero NAT Gateway (saves ~32 USD/month)
 ########################################
 
@@ -46,22 +46,22 @@ resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
-  tags = { Name = "-vpc" }
+  tags = { Name = "${local.name_prefix}-vpc" }
 }
 
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
-  tags   = { Name = "-igw" }
+  tags   = { Name = "${local.name_prefix}-igw" }
 }
 
-# Public subnets — ALB and ECS Fargate tasks live here
+# Public subnets â€” ALB and ECS Fargate tasks live here
 resource "aws_subnet" "public" {
   count                   = length(var.public_subnet_cidrs)
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.public_subnet_cidrs[count.index]
   availability_zone       = local.azs[count.index]
-  map_public_ip_on_launch = false # ECS tasks have no public IP; traffic flows only through ALB
-  tags = { Name = "-public-" }
+  map_public_ip_on_launch = true
+  tags = { Name = "${local.name_prefix}-public-${count.index}" }
 }
 
 resource "aws_route_table" "public" {
@@ -70,7 +70,7 @@ resource "aws_route_table" "public" {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.main.id
   }
-  tags = { Name = "-public-rt" }
+  tags = { Name = "${local.name_prefix}-public-rt" }
 }
 
 resource "aws_route_table_association" "public" {
@@ -79,18 +79,18 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# Private subnets — RDS only, unreachable from the internet
+# Private subnets â€” RDS only, unreachable from the internet
 resource "aws_subnet" "private" {
   count             = length(var.private_subnet_cidrs)
   vpc_id            = aws_vpc.main.id
   cidr_block        = var.private_subnet_cidrs[count.index]
   availability_zone = local.azs[count.index]
-  tags = { Name = "-private-" }
+  tags = { Name = "${local.name_prefix}-private-${count.index}" }
 }
 
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
-  tags   = { Name = "-private-rt" }
+  tags   = { Name = "${local.name_prefix}-private-rt" }
 }
 
 resource "aws_route_table_association" "private" {
@@ -99,13 +99,13 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
-# Free S3 Gateway Endpoint — ECS tasks reach S3 without going through IGW
+# Free S3 Gateway Endpoint â€” ECS tasks reach S3 without internet egress
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws..s3"
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
   vpc_endpoint_type = "Gateway"
   route_table_ids   = [aws_route_table.public.id, aws_route_table.private.id]
-  tags = { Name = "-s3-endpoint" }
+  tags = { Name = "${local.name_prefix}-s3-endpoint" }
 }
 
 ########################################
@@ -113,22 +113,22 @@ resource "aws_vpc_endpoint" "s3" {
 ########################################
 
 resource "aws_security_group" "alb" {
-  name        = "-alb"
-  description = "Application Load Balancer — allow HTTPS from internet, HTTP for redirect"
+  name        = "${local.name_prefix}-alb"
+  description = "Application Load Balancer - allow HTTP/HTTPS from internet"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "HTTPS from internet"
-    from_port   = 443
-    to_port     = 443
+    description = "HTTP from internet"
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
-    description = "HTTP from internet (redirect to HTTPS)"
-    from_port   = 80
-    to_port     = 80
+    description = "HTTPS from internet"
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -141,12 +141,12 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "-alb-sg" }
+  tags = { Name = "${local.name_prefix}-alb-sg" }
 }
 
 resource "aws_security_group" "ecs_tasks" {
-  name        = "-ecs-tasks"
-  description = "ECS Fargate tasks — inbound only from ALB on 8000, outbound all"
+  name        = "${local.name_prefix}-ecs-tasks"
+  description = "ECS Fargate tasks - inbound only from ALB on 8000, outbound all"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -158,19 +158,19 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   egress {
-    description = "All outbound — RDS, S3 endpoint, ECR, SSM, WhatsApp, Firebase"
+    description = "All outbound - RDS, S3 endpoint, ECR, SSM, WhatsApp, Firebase"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "-ecs-tasks-sg" }
+  tags = { Name = "${local.name_prefix}-ecs-tasks-sg" }
 }
 
 resource "aws_security_group" "rds" {
-  name        = "-rds"
-  description = "RDS Postgres — inbound only from ECS tasks on 5432"
+  name        = "${local.name_prefix}-rds"
+  description = "RDS Postgres - inbound only from ECS tasks on 5432"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -188,7 +188,7 @@ resource "aws_security_group" "rds" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "-rds-sg" }
+  tags = { Name = "${local.name_prefix}-rds-sg" }
 }
 
 ########################################
@@ -197,23 +197,23 @@ resource "aws_security_group" "rds" {
 
 resource "aws_acm_certificate" "api" {
   domain_name               = var.domain_name
-  subject_alternative_names = var.enable_www_subdomain ? ["www."] : []
+  subject_alternative_names = var.enable_www_subdomain ? ["www.${var.domain_name}"] : []
   validation_method         = "DNS"
   lifecycle { create_before_destroy = true }
-  tags = { Name = "-cert" }
+  tags = { Name = "${local.name_prefix}-cert" }
 }
 
 resource "aws_lb" "main" {
-  name               = "-alb"
+  name               = "${local.name_prefix}-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
-  tags               = { Name = "-alb" }
+  tags               = { Name = "${local.name_prefix}-alb" }
 }
 
 resource "aws_lb_target_group" "app" {
-  name        = "-tg"
+  name        = "${local.name_prefix}-tg"
   port        = 8000
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
@@ -229,25 +229,41 @@ resource "aws_lb_target_group" "app" {
     unhealthy_threshold = 3
   }
 
-  tags = { Name = "-tg" }
+  tags = { Name = "${local.name_prefix}-tg" }
 }
 
-resource "aws_lb_listener" "http_redirect" {
+# Port 80 listener: forwards directly to backend during bootstrap,
+# or redirects to HTTPS once enable_https is turned on
+resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
 
-  default_action {
-    type = "redirect"
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
+  dynamic "default_action" {
+    for_each = var.enable_https ? [1] : []
+    content {
+      type = "redirect"
+      redirect {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+  }
+
+  dynamic "default_action" {
+    for_each = var.enable_https ? [] : [1]
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.app.arn
     }
   }
 }
 
+# Port 443 HTTPS listener: created only when enable_https = true
+# (after ACM certificate is validated in DNS)
 resource "aws_lb_listener" "https" {
+  count             = var.enable_https ? 1 : 0
   load_balancer_arn = aws_lb.main.arn
   port              = 443
   protocol          = "HTTPS"
@@ -261,13 +277,13 @@ resource "aws_lb_listener" "https" {
 }
 
 ########################################
-# Database — RDS Postgres
+# Database â€” RDS Postgres
 ########################################
 
 resource "aws_db_subnet_group" "this" {
-  name       = "-db-subnets"
+  name       = "${local.name_prefix}-db-subnets"
   subnet_ids = aws_subnet.private[*].id
-  tags       = { Name = "-db-subnets" }
+  tags       = { Name = "${local.name_prefix}-db-subnets" }
 }
 
 resource "random_password" "db" {
@@ -277,7 +293,7 @@ resource "random_password" "db" {
 }
 
 resource "aws_db_instance" "postgres" {
-  identifier     = "-db"
+  identifier     = "${local.name_prefix}-db"
   engine         = "postgres"
   engine_version = var.db_engine_version
 
@@ -299,19 +315,19 @@ resource "aws_db_instance" "postgres" {
 
   backup_retention_period   = var.db_backup_retention_period
   skip_final_snapshot       = false
-  final_snapshot_identifier = "-db-final"
+  final_snapshot_identifier = "${local.name_prefix}-db-final"
   deletion_protection       = true
 
-  tags = { Name = "-db" }
+  tags = { Name = "${local.name_prefix}-db" }
 }
 
 ########################################
-# Storage — S3 (photos, KYC docs, agreements)
+# Storage â€” S3 (photos, KYC docs, agreements)
 ########################################
 
 resource "aws_s3_bucket" "app" {
-  bucket = "-app-storage-"
-  tags   = { Name = "-app-storage" }
+  bucket = "${local.name_prefix}-app-storage-${data.aws_caller_identity.current.account_id}"
+  tags   = { Name = "${local.name_prefix}-app-storage" }
 }
 
 resource "aws_s3_bucket_versioning" "app" {
@@ -338,7 +354,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "app" {
 }
 
 ########################################
-# Secrets — SSM Parameter Store (permanently free)
+# Secrets â€” SSM Parameter Store (permanently free)
 ########################################
 
 resource "random_password" "jwt_secret" {
@@ -348,28 +364,28 @@ resource "random_password" "jwt_secret" {
 
 resource "aws_ssm_parameter" "computed_secret" {
   for_each = local.computed_secrets
-  name     = "/"
+  name     = "${local.ssm_prefix}/${each.key}"
   type     = "SecureString"
   value    = each.value
-  tags     = { Name = "/" }
+  tags     = { Name = "${local.ssm_prefix}/${each.key}" }
 }
 
 resource "aws_ssm_parameter" "external_secret" {
   for_each    = local.external_secrets
-  name        = "/"
+  name        = "${local.ssm_prefix}/${each.key}"
   type        = "SecureString"
   value       = each.value
-  description = "REPLACE ME after apply — see infra/runbook.md"
+  description = "REPLACE ME after apply - see infra/runbook.md"
   lifecycle { ignore_changes = [value] }
-  tags = { Name = "/" }
+  tags = { Name = "${local.ssm_prefix}/${each.key}" }
 }
 
 ########################################
-# Container Registry — Amazon ECR
+# Container Registry â€” Amazon ECR
 ########################################
 
 resource "aws_ecr_repository" "app" {
-  name                 = "-backend"
+  name                 = "${local.name_prefix}-backend"
   image_tag_mutability = "IMMUTABLE"
   image_scanning_configuration { scan_on_push = true }
 }
@@ -387,7 +403,7 @@ resource "aws_ecr_lifecycle_policy" "app" {
 }
 
 ########################################
-# IAM — ECS Execution Role (pull ECR, write logs)
+# IAM â€” ECS Execution Role (pull ECR, write logs)
 ########################################
 
 data "aws_iam_policy_document" "ecs_execution_assume" {
@@ -401,7 +417,7 @@ data "aws_iam_policy_document" "ecs_execution_assume" {
 }
 
 resource "aws_iam_role" "ecs_execution" {
-  name               = "-ecs-execution"
+  name               = "${local.name_prefix}-ecs-execution"
   assume_role_policy = data.aws_iam_policy_document.ecs_execution_assume.json
 }
 
@@ -417,7 +433,7 @@ data "aws_iam_policy_document" "ecs_execution_ssm" {
     effect  = "Allow"
     actions = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
     resources = [
-      "arn:aws:ssm:::parameter/*"
+      "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}/*"
     ]
   }
   statement {
@@ -429,7 +445,7 @@ data "aws_iam_policy_document" "ecs_execution_ssm" {
 }
 
 resource "aws_iam_policy" "ecs_execution_ssm" {
-  name   = "-ecs-execution-ssm"
+  name   = "${local.name_prefix}-ecs-execution-ssm"
   policy = data.aws_iam_policy_document.ecs_execution_ssm.json
 }
 
@@ -439,7 +455,7 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_ssm" {
 }
 
 ########################################
-# IAM — ECS Task Role (least-privilege S3 + SSM at runtime)
+# IAM â€” ECS Task Role (least-privilege S3 + SSM at runtime)
 ########################################
 
 data "aws_iam_policy_document" "ecs_task_assume" {
@@ -453,7 +469,7 @@ data "aws_iam_policy_document" "ecs_task_assume" {
 }
 
 resource "aws_iam_role" "ecs_task" {
-  name               = "-ecs-task"
+  name               = "${local.name_prefix}-ecs-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
 }
 
@@ -468,14 +484,14 @@ data "aws_iam_policy_document" "ecs_task" {
     sid    = "ReadWriteOwnBucketObjects"
     effect = "Allow"
     actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-    resources = ["/*"]
+    resources = ["${aws_s3_bucket.app.arn}/*"]
   }
   statement {
     sid    = "ReadOwnSsmParameters"
     effect = "Allow"
     actions = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
     resources = [
-      "arn:aws:ssm:::parameter/*"
+      "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}/*"
     ]
   }
   statement {
@@ -487,7 +503,7 @@ data "aws_iam_policy_document" "ecs_task" {
 }
 
 resource "aws_iam_policy" "ecs_task" {
-  name   = "-ecs-task-policy"
+  name   = "${local.name_prefix}-ecs-task-policy"
   policy = data.aws_iam_policy_document.ecs_task.json
 }
 
@@ -497,7 +513,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task" {
 }
 
 ########################################
-# GitHub Actions OIDC — keyless CI/CD
+# GitHub Actions OIDC â€” keyless CI/CD
 # No static AWS access keys stored anywhere
 ########################################
 
@@ -522,13 +538,13 @@ data "aws_iam_policy_document" "github_actions_assume" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo::*"]
+      values   = ["repo:${var.github_repository}:*"]
     }
   }
 }
 
 resource "aws_iam_role" "github_actions" {
-  name               = "-github-actions"
+  name               = "${local.name_prefix}-github-actions"
   assume_role_policy = data.aws_iam_policy_document.github_actions_assume.json
 }
 
@@ -573,7 +589,7 @@ data "aws_iam_policy_document" "github_actions" {
 }
 
 resource "aws_iam_policy" "github_actions" {
-  name   = "-github-actions-policy"
+  name   = "${local.name_prefix}-github-actions-policy"
   policy = data.aws_iam_policy_document.github_actions.json
 }
 
@@ -587,9 +603,9 @@ resource "aws_iam_role_policy_attachment" "github_actions" {
 ########################################
 
 resource "aws_cloudwatch_log_group" "app" {
-  name              = "/ecs/"
+  name              = "/ecs/${local.name_prefix}"
   retention_in_days = var.cloudwatch_log_retention_days
-  tags              = { Name = "-logs" }
+  tags              = { Name = "${local.name_prefix}-logs" }
 }
 
 ########################################
@@ -600,7 +616,7 @@ resource "aws_ecs_cluster" "main" {
   name = local.name_prefix
   setting {
     name  = "containerInsights"
-    value = "disabled" # Enable later if you want CloudWatch Container Insights metrics
+    value = "disabled"
   }
   tags = { Name = local.name_prefix }
 }
@@ -616,7 +632,7 @@ resource "aws_ecs_task_definition" "app" {
 
   container_definitions = jsonencode([{
     name      = "api"
-    image     = ":"
+    image     = "${aws_ecr_repository.app.repository_url}:${var.ecr_image_tag}"
     essential = true
 
     portMappings = [{ containerPort = 8000, hostPort = 8000, protocol = "tcp" }]
@@ -639,8 +655,6 @@ resource "aws_ecs_task_definition" "app" {
       { name = "LATE_FEE_PERCENT_PER_DAY",        value = var.late_fee_percent_per_day },
       { name = "INVOICE_GENERATION_DAY",          value = tostring(var.invoice_generation_day) },
       { name = "LOG_LEVEL",                       value = var.app_log_level },
-      # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY are intentionally NOT set.
-      # boto3 resolves credentials from the ECS Task Role automatically.
     ]
 
     secrets = [
@@ -659,32 +673,23 @@ resource "aws_ecs_task_definition" "app" {
         "awslogs-stream-prefix" = "ecs"
       }
     }
-
-    healthCheck = {
-      command     = ["CMD-SHELL", "curl -f http://localhost:8000/healthz || exit 1"]
-      interval    = 30
-      timeout     = 5
-      retries     = 3
-      startPeriod = 60
-    }
   }])
 }
 
 resource "aws_ecs_service" "app" {
-  name            = "-service"
+  name            = "${local.name_prefix}-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.ecs_desired_count
   launch_type     = "FARGATE"
 
-  # Allow ECS to replace tasks during deployment without downtime
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
 
   network_configuration {
     subnets          = aws_subnet.public[*].id
     security_groups  = [aws_security_group.ecs_tasks.id]
-    assign_public_ip = true # Required for Fargate in public subnets to reach ECR/SSM without NAT
+    assign_public_ip = true
   }
 
   load_balancer {
@@ -694,29 +699,32 @@ resource "aws_ecs_service" "app" {
   }
 
   lifecycle {
-    # Prevent Terraform from reverting the image tag after CI/CD deploys a new one
     ignore_changes = [task_definition]
   }
 
-  depends_on = [aws_lb_listener.https, aws_iam_role_policy_attachment.ecs_execution_managed]
+  depends_on = [aws_lb_listener.http, aws_iam_role_policy_attachment.ecs_execution_managed]
 }
 
 ########################################
-# WAF v2 — optional, default off (saves ~5 USD/mo)
+# WAF v2 â€” optional, default off (saves ~5 USD/mo)
 ########################################
 
 resource "aws_wafv2_web_acl" "app" {
   count       = var.enable_waf ? 1 : 0
-  name        = "-waf"
+  name        = "${local.name_prefix}-waf"
   description = "Rate limiting for KaramStay ALB"
   scope       = "REGIONAL"
 
-  default_action { allow {} }
+  default_action {
+    allow {}
+  }
 
   rule {
     name     = "rate-limit-per-ip"
     priority = 1
-    action   { block {} }
+    action {
+      block {}
+    }
     statement {
       rate_based_statement {
         limit                 = var.waf_rate_limit_requests
@@ -726,18 +734,18 @@ resource "aws_wafv2_web_acl" "app" {
     }
     visibility_config {
       cloudwatch_metrics_enabled = true
-      metric_name                = "-rate-limit"
+      metric_name                = "${local.name_prefix}-rate-limit"
       sampled_requests_enabled   = true
     }
   }
 
   visibility_config {
     cloudwatch_metrics_enabled = true
-    metric_name                = "-waf"
+    metric_name                = "${local.name_prefix}-waf"
     sampled_requests_enabled   = true
   }
 
-  tags = { Name = "-waf" }
+  tags = { Name = "${local.name_prefix}-waf" }
 }
 
 resource "aws_wafv2_web_acl_association" "app" {
@@ -747,11 +755,11 @@ resource "aws_wafv2_web_acl_association" "app" {
 }
 
 ########################################
-# Cost guardrails — AWS Budgets + SNS + email
+# Cost guardrails â€” AWS Budgets + SNS + email
 ########################################
 
 resource "aws_sns_topic" "budget_alerts" {
-  name = "-budget-alerts"
+  name = "${local.name_prefix}-budget-alerts"
 }
 
 data "aws_iam_policy_document" "budget_alerts_sns" {
@@ -779,7 +787,7 @@ resource "aws_sns_topic_subscription" "budget_alerts_email" {
 }
 
 resource "aws_budgets_budget" "monthly" {
-  name         = "-monthly-budget"
+  name         = "${local.name_prefix}-monthly-budget"
   budget_type  = "COST"
   limit_amount = tostring(var.monthly_budget_limit_usd)
   limit_unit   = "USD"
@@ -811,3 +819,4 @@ resource "aws_budgets_budget" "monthly" {
 
   depends_on = [aws_sns_topic_policy.budget_alerts]
 }
+

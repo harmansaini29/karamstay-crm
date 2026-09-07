@@ -1,4 +1,4 @@
-﻿terraform {
+terraform {
   required_version = ">= 1.7.0, < 2.0.0"
 
   required_providers {
@@ -17,13 +17,13 @@
   # This MUST be configured before sharing Terraform with a team or running
   # from CI/CD, so state is never stored on a local machine.
   #
-  # backend "s3" {
-  #   bucket         = "karamstay-tfstate-907079642634"
-  #   key            = "backend/prod/terraform.tfstate"
-  #   region         = "ap-south-1"
-  #   dynamodb_table = "karamstay-tflock"
-  #   encrypt        = true
-  # }
+  backend "s3" {
+    bucket         = "karamstay-tfstate-907079642634"
+    key            = "backend/prod/terraform.tfstate"
+    region         = "ap-south-1"
+    dynamodb_table = "karamstay-tflock"
+    encrypt        = true
+  }
 }
 
 provider "aws" {
