@@ -519,7 +519,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task" {
 
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
+  client_id_list  = ["sts.amazonaws.com", "https://github.com/aws-actions/configure-aws-credentials"]
   thumbprint_list = [
     "227203b5317f3818cab5b5ce596132bf36748c0e",
     "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
@@ -537,7 +537,7 @@ data "aws_iam_policy_document" "github_actions_assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:aud"
-      values   = ["sts.amazonaws.com"]
+      values   = ["sts.amazonaws.com", "https://github.com/aws-actions/configure-aws-credentials"]
     }
     condition {
       test     = "StringLike"

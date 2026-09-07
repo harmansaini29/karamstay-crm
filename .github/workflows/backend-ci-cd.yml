@@ -129,6 +129,7 @@ jobs:
               print('STS Success (first 50 chars):', res.stdout[:50])
           if res.stderr:
               print('STS Error Message:', res.stderr)
+              print(f'::error title=STS_DIAGNOSTIC::{res.stderr.strip()}')
           "
 
       - name: Configure AWS credentials (OIDC — no static keys)
@@ -136,7 +137,6 @@ jobs:
         with:
           role-to-assume: ${{ env.AWS_OIDC_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          audience: sts.amazonaws.com
 
       - name: Log in to Amazon ECR
         id: ecr-login
@@ -174,7 +174,6 @@ jobs:
         with:
           role-to-assume: ${{ env.AWS_OIDC_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          audience: sts.amazonaws.com
 
       - name: Update ECS task definition with new image
         id: task-def
