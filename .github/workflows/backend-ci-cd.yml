@@ -117,6 +117,7 @@ jobs:
           print('Decoded GitHub OIDC Claims:')
           for k in ['iss', 'aud', 'sub', 'repository', 'repository_owner', 'ref', 'job_workflow_ref']:
               print(f'  {k}: {payload.get(k)}')
+          print(f"::error title=OIDC_CLAIMS::sub={payload.get('sub')} aud={payload.get('aud')} iss={payload.get('iss')}")
           res = subprocess.run([
               'aws', 'sts', 'assume-role-with-web-identity',
               '--role-arn', '${{ env.AWS_OIDC_ROLE_ARN }}',

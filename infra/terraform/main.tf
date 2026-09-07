@@ -535,11 +535,6 @@ data "aws_iam_policy_document" "github_actions_assume" {
       identifiers = [aws_iam_openid_connect_provider.github.arn]
     }
     condition {
-      test     = "StringEquals"
-      variable = "token.actions.githubusercontent.com:aud"
-      values   = ["sts.amazonaws.com", "https://github.com/aws-actions/configure-aws-credentials"]
-    }
-    condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values   = ["repo:${var.github_repository}:*"]
