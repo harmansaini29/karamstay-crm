@@ -1,4 +1,4 @@
-﻿# KaramStay — Production Launch Runbook (AWS ap-south-1 Mumbai)
+# KaramStay — Production Launch Runbook (AWS ap-south-1 Mumbai)
 # Account: 907079642634 | Credits: 140 USD active (expires Apr 27 2027)
 # Last updated: September 2026
 
@@ -222,7 +222,7 @@ Option B — Temporarily from a local machine with DATABASE_URL set:
 
 ## Step 8 — Configure GitHub Actions Repository Variables
 
-In GitHub (https://github.com/DevKano98/KaramStay):
+In GitHub (https://github.com/harmansaini29/karamstay-crm):
   Settings -> Secrets and variables -> Actions -> Variables tab
 
 Add these 5 variables (all values come from 	erraform output):
