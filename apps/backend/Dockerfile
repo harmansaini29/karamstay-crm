@@ -48,6 +48,7 @@ COPY --from=builder /opt/venv /opt/venv
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
+COPY scripts ./scripts
 
 RUN chown -R app:app /app
 
