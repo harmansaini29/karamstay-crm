@@ -27,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'ap-south-1' }}
@@ -100,38 +101,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Inspect GitHub OIDC Token and Test Direct STS AssumeRole
-        run: |
-          echo "Role to assume: ${{ env.AWS_OIDC_ROLE_ARN }}"
-          echo "AWS Region: ${{ env.AWS_REGION }}"
-          echo "Repository: ${{ github.repository }}"
-          echo "Ref: ${{ github.ref }}"
-          TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
-          echo "$TOKEN" > /tmp/oidc_token.jwt
-          python3 -c "
-          import sys, json, base64, subprocess
-          token = open('/tmp/oidc_token.jwt').read().strip()
-          parts = token.split('.')
-          payload = json.loads(base64.urlsafe_b64decode(parts[1] + '=='))
-          print('Decoded GitHub OIDC Claims:')
-          for k in ['iss', 'aud', 'sub', 'repository', 'repository_owner', 'ref', 'job_workflow_ref']:
-              print(f'  {k}: {payload.get(k)}')
-          print(f"::error title=OIDC_CLAIMS::sub={payload.get('sub')} aud={payload.get('aud')} iss={payload.get('iss')}")
-          res = subprocess.run([
-              'aws', 'sts', 'assume-role-with-web-identity',
-              '--role-arn', '${{ env.AWS_OIDC_ROLE_ARN }}',
-              '--role-session-name', 'GitHubActionsDiagnostic',
-              '--web-identity-token', token,
-              '--region', '${{ env.AWS_REGION }}'
-          ], capture_output=True, text=True)
-          print('STS Returncode:', res.returncode)
-          if res.stdout:
-              print('STS Success (first 50 chars):', res.stdout[:50])
-          if res.stderr:
-              print('STS Error Message:', res.stderr)
-              print(f'::error title=STS_DIAGNOSTIC::{res.stderr.strip()}')
-          "
 
       - name: Configure AWS credentials (OIDC — no static keys)
         uses: aws-actions/configure-aws-credentials@v4
