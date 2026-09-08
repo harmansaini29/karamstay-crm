@@ -11,6 +11,10 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "http://karamstay-prod-alb-2085938532.ap-south-1.elb.amazonaws.com/api/v1",
+        "EXPO_PUBLIC_MOCK_API": "false"
       }
     },
     "production": {
@@ -19,6 +23,10 @@
       },
       "ios": {
         "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "http://karamstay-prod-alb-2085938532.ap-south-1.elb.amazonaws.com/api/v1",
+        "EXPO_PUBLIC_MOCK_API": "false"
       }
     }
   },

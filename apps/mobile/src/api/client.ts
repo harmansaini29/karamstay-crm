@@ -9,8 +9,10 @@ export interface ApiError {
   details: any;
 }
 
-// Environment variables
-const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1';
+// Environment variables — points directly to live AWS Mumbai production backend
+const BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  'http://karamstay-prod-alb-2085938532.ap-south-1.elb.amazonaws.com/api/v1';
 // Mock mode is strictly opt-in: it only turns on when EXPO_PUBLIC_MOCK_API is explicitly
 // "true". Every other value (including unset, and any production build) hits the real
 // backend at BASE_URL. This is the local-dev fallback only — never shipped on by default.
