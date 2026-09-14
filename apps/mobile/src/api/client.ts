@@ -21,6 +21,7 @@ const USE_MOCK = process.env.EXPO_PUBLIC_MOCK_API === 'true';
 // Base Axios instance
 export const apiClient = axios.create({
   baseURL: BASE_URL,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -29,6 +30,7 @@ export const apiClient = axios.create({
 // A separate instance without polyfills to prevent infinite recursion
 const rawClient = axios.create({
   baseURL: BASE_URL,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -142,9 +144,10 @@ export const parseApiError = (error: any): ApiError => {
   }
 
   if (error?.request) {
+    const detailMsg = error?.message ? ` (${error.message})` : '';
     return {
       code: 'NETWORK_ERROR',
-      message: 'Unable to connect to the server. Please check your network connection.',
+      message: `Unable to connect to server${detailMsg}. Please check your internet connection.`,
       details: null,
     };
   }
