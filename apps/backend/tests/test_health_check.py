@@ -1,4 +1,4 @@
-﻿"""
+"""
 KaramStay CRM — Full Health-Check Test Suite
 =============================================
 Covers every new endpoint, role-enforcement rule, edge-case, and security
@@ -7,9 +7,6 @@ constraint introduced in the September 2026 feature push.
 All tests run against the SQLite in-memory engine wired up in conftest.py.
 No real AWS / DB / network needed.
 """
-
-from datetime import date
-from decimal import Decimal
 
 import pytest
 
@@ -248,7 +245,7 @@ def test_tenant_cannot_delete_document(client, db_session, fake_storage):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_owner_can_soft_delete_tenant(client, db_session):
-    owner = create_user(db_session, role_name="owner", email="owner-del1@example.com")
+    create_user(db_session, role_name="owner", email="owner-del1@example.com")
     h = auth_headers(client, email="owner-del1@example.com")
     tenant = client.post(
         "/api/v1/tenants",
@@ -300,7 +297,7 @@ def test_soft_delete_nonexistent_tenant_returns_404(client, db_session):
 
 def test_deleted_tenant_not_in_list(client, db_session):
     """After soft-delete the tenant must NOT appear in list_tenants."""
-    owner = create_user(db_session, role_name="owner", email="owner-del4@example.com")
+    create_user(db_session, role_name="owner", email="owner-del4@example.com")
     h = auth_headers(client, email="owner-del4@example.com")
     tenant = client.post(
         "/api/v1/tenants",
@@ -379,7 +376,7 @@ def test_rent_update_negative_value_rejected(client, db_session):
 
 
 def test_rent_update_nonexistent_tenancy_returns_404(client, db_session):
-    owner = create_user(db_session, role_name="owner", email="owner-rent3@example.com")
+    create_user(db_session, role_name="owner", email="owner-rent3@example.com")
     h = auth_headers(client, email="owner-rent3@example.com")
     resp = client.patch(
         "/api/v1/tenancies/999999/rent",
@@ -394,7 +391,7 @@ def test_rent_update_nonexistent_tenancy_returns_404(client, db_session):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_owner_can_delete_document_soft(client, db_session, fake_storage):
-    owner = create_user(db_session, role_name="owner", email="owner-doc1@example.com")
+    create_user(db_session, role_name="owner", email="owner-doc1@example.com")
     h = auth_headers(client, email="owner-doc1@example.com")
     tenant_row = Tenant(name="Doc Person", phone="+919400000001")
     db_session.add(tenant_row)
@@ -625,7 +622,7 @@ def test_vacate_bed_completes_tenancy(client, db_session):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_staff_can_read_tenant_profile(client, db_session):
-    owner = create_user(db_session, role_name="owner", email="owner-staff-read@example.com")
+    create_user(db_session, role_name="owner", email="owner-staff-read@example.com")
     owner_h = auth_headers(client, email="owner-staff-read@example.com")
     tenant = client.post(
         "/api/v1/tenants",
@@ -641,7 +638,7 @@ def test_staff_can_read_tenant_profile(client, db_session):
 
 
 def test_staff_cannot_delete_tenant(client, db_session):
-    owner = create_user(db_session, role_name="owner", email="owner-staffdel@example.com")
+    create_user(db_session, role_name="owner", email="owner-staffdel@example.com")
     owner_h = auth_headers(client, email="owner-staffdel@example.com")
     tenant = client.post(
         "/api/v1/tenants",
@@ -663,7 +660,7 @@ def test_dashboard_occupancy_is_a_fraction_not_percentage(client, db_session):
     """
     Occupancy must be a ratio 0-1, never exceed 1.0 (100 %).
     """
-    owner = create_user(db_session, role_name="owner", email="owner-occ@example.com")
+    create_user(db_session, role_name="owner", email="owner-occ@example.com")
     h = auth_headers(client, email="owner-occ@example.com")
 
     resp = client.get("/api/v1/analytics/dashboard", headers=h)
@@ -702,7 +699,7 @@ def test_soft_delete_writes_audit_log(client, db_session):
 
     from app.features.audit.models import AuditLog
 
-    owner = create_user(db_session, role_name="owner", email="owner-audit1@example.com")
+    create_user(db_session, role_name="owner", email="owner-audit1@example.com")
     h = auth_headers(client, email="owner-audit1@example.com")
     tenant = client.post(
         "/api/v1/tenants",
