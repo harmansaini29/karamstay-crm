@@ -272,7 +272,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
   const statTiles = [
     {
       title: 'Occupancy',
-      value: `${Math.round((analytics?.occupancy_rate || 0) * 100)}%`,
+      value: ownerTotalBeds > 0 ? `${ownerOccupiedBeds}/${ownerTotalBeds} Beds` : '0/0 Beds',
       icon: 'people-circle-sharp',
       color: colors.primary,
       onPress: () => navigation.navigate('Properties'),

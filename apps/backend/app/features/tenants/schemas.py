@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TenantCreate(BaseModel):
@@ -14,6 +14,32 @@ class TenantCreate(BaseModel):
     emergency_contact_phone: str | None = Field(default=None, max_length=32)
     owner_notes: str | None = None
 
+    @field_validator("date_of_birth", mode="before")
+    @classmethod
+    def parse_dob(cls, v):
+        if not v:
+            return None
+        if isinstance(v, date):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return None
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/%m/%d"):
+                try:
+                    return datetime.strptime(v, fmt).date()
+                except ValueError:
+                    pass
+        return v
+
+    @field_validator("email", "occupation", "emergency_contact_name", "emergency_contact_phone", "owner_notes", mode="before")
+    @classmethod
+    def clean_optional_strings(cls, v):
+        if isinstance(v, str):
+            v = v.strip()
+            return v if v else None
+        return v
+
 
 class TenantUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
@@ -24,6 +50,36 @@ class TenantUpdate(BaseModel):
     emergency_contact_phone: str | None = Field(default=None, max_length=32)
     status: str | None = Field(default=None, min_length=2, max_length=24)
     owner_notes: str | None = None
+
+    @field_validator("date_of_birth", mode="before")
+    @classmethod
+    def parse_dob(cls, v):
+        if not v:
+            return None
+        if isinstance(v, date):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return None
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/%m/%d"):
+                try:
+                    return datetime.strptime(v, fmt).date()
+                except ValueError:
+                    pass
+        return v
+
+    @field_validator("email", "occupation", "emergency_contact_name", "emergency_contact_phone", "owner_notes", "status", mode="before")
+    @classmethod
+    def clean_optional_strings(cls, v):
+        if isinstance(v, str):
+            v = v.strip()
+            return v if v else None
+        return v
+
+
+class TenancyRentUpdate(BaseModel):
+    monthly_rent: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
 
 
 class TenantResponse(BaseModel):

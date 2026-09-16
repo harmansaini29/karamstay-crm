@@ -109,11 +109,24 @@ export const TenantForm: React.FC<TenantFormProps> = ({ route, navigation }) => 
     }
 
     setErrors({});
+    let formattedDob: string | null = null;
+    const cleanDob = dateOfBirth.trim();
+    if (cleanDob) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(cleanDob)) {
+        formattedDob = cleanDob;
+      } else if (/^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/.test(cleanDob)) {
+        const parts = cleanDob.split(/[\/\-]/);
+        formattedDob = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      } else {
+        formattedDob = cleanDob;
+      }
+    }
+
     const payload: any = {
       name: name.trim(),
       phone: phone.trim(),
       email: email.trim() || null,
-      date_of_birth: dateOfBirth.trim() || null,
+      date_of_birth: formattedDob,
       occupation: occupation.trim() || null,
       emergency_contact_name: emergencyName.trim() || null,
       emergency_contact_phone: emergencyPhone.trim() || null,

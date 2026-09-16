@@ -9,6 +9,7 @@ from app.features.auth.models import User
 from app.features.tenants.schemas import (
     TenancyCheckoutRequest,
     TenancyCheckoutResponse,
+    TenancyRentUpdate,
     TenancyContextResponse,
     TenancyCreate,
     TenancyResponse,
@@ -20,18 +21,20 @@ from app.features.tenants.service import TenantService
 
 router = APIRouter()
 OwnerManagerUser = Annotated[User, Depends(require_roles(["owner", "manager"]))]
+OwnerManagerStaffUser = Annotated[User, Depends(require_roles(["owner", "manager", "staff"]))]
+OwnerUser = Annotated[User, Depends(require_roles(["owner"]))]
 AnyUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "tenant"]))]
 TenantSelfUser = Annotated[User, Depends(require_roles(["tenant"]))]
 DbSession = Annotated[Session, Depends(get_db)]
 
 
 @router.get("/tenants", response_model=list[TenantResponse])
-def list_tenants(current_user: OwnerManagerUser, db: DbSession) -> list[TenantResponse]:
+def list_tenants(current_user: OwnerManagerStaffUser, db: DbSession) -> list[TenantResponse]:
     return TenantService(db).list_tenants(current_user)
 
 
 @router.post("/tenants", response_model=TenantResponse, status_code=status.HTTP_201_CREATED)
-def create_tenant(payload: TenantCreate, current_user: OwnerManagerUser, db: DbSession) -> TenantResponse:
+def create_tenant(payload: TenantCreate, current_user: OwnerManagerStaffUser, db: DbSession) -> TenantResponse:
     return TenantService(db).create_tenant(payload, current_user)
 
 
@@ -62,7 +65,7 @@ def check_in(payload: TenancyCreate, current_user: OwnerManagerUser, db: DbSessi
 
 @router.get("/tenancies", response_model=list[TenancyResponse])
 def list_tenancies(
-    current_user: OwnerManagerUser,
+    current_user: OwnerManagerStaffUser,
     db: DbSession,
     tenant_id: int | None = None,
     property_id: int | None = None,
@@ -99,3 +102,22 @@ def checkout(
         damage_deduction=damage_deduction,
         deposit_refund=deposit_refund,
     )
+
+@router.delete("/tenants/{tenant_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_tenant(
+    tenant_id: int,
+    current_user: OwnerManagerUser,
+    db: DbSession,
+) -> Response:
+    TenantService(db).delete_tenant(tenant_id, current_user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch("/tenancies/{tenancy_id}/rent", response_model=TenancyResponse)
+def update_tenancy_rent(
+    tenancy_id: int,
+    payload: TenancyRentUpdate,
+    current_user: OwnerUser,
+    db: DbSession,
+) -> TenancyResponse:
+    return TenantService(db).update_tenancy_rent(tenancy_id, payload, current_user)

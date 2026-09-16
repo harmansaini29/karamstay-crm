@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLogService
 from app.core.security import utc_now
-from app.features.auth.models import User
+from app.features.auth.models import Role, User, User as UserModel
+from app.features.notifications.models import Notification
 from app.features.payments.models import LedgerEntry
 from app.features.properties.models import Bed, InventoryItem
 from app.features.properties.repository import PropertyRepository
@@ -14,6 +15,7 @@ from app.features.tenants.repository import TenantRepository
 from app.features.tenants.schemas import (
     TenancyCheckoutRequest,
     TenancyCreate,
+    TenancyRentUpdate,
     TenantCreate,
     TenantUpdate,
 )
@@ -55,6 +57,25 @@ class TenantService:
             entity_type="tenant",
             entity_id=tenant.id,
         )
+        # Notify active staff members
+        from sqlalchemy import select
+        staff_stmt = (
+            select(UserModel.id)
+            .join(Role, Role.id == UserModel.role_id)
+            .where(Role.name == "staff", UserModel.is_active.is_(True), UserModel.deleted_at.is_(None))
+        )
+        staff_ids = list(self.db.scalars(staff_stmt))
+        for s_id in staff_ids:
+            self.db.add(
+                Notification(
+                    user_id=s_id,
+                    channel="in_app",
+                    notification_type="tenant_onboarded",
+                    title="New Tenant Onboarded",
+                    message=f"Tenant {tenant.name} ({tenant.phone}) has been registered in the system.",
+                    status="unread",
+                )
+            )
         self.db.commit()
         self.db.refresh(tenant)
         return tenant
@@ -71,7 +92,7 @@ class TenantService:
             tenant_id,
         ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant access denied")
-        # owner and accountant get unrestricted read access for finance/ops visibility
+        # owner, accountant, and staff get unrestricted read access for finance/ops visibility
         return tenant
 
     def get_my_profile(self, current_user: User) -> Tenant:
@@ -385,3 +406,71 @@ class TenantService:
         self.db.commit()
         self.db.refresh(tenancy)
         return tenancy, outstanding_dues, damage_deduction, deposit_refund
+
+    def delete_tenant(self, tenant_id: int, current_user: User) -> None:
+        tenant = self.repository.get_tenant(tenant_id)
+        if tenant is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+        if current_user.role.name not in ("owner", "manager"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owner or manager can delete tenant")
+
+        from sqlalchemy import select
+        from app.features.tenants.models import Tenancy
+        from app.features.properties.models import Bed
+
+        active_tenancies = list(self.db.scalars(
+            select(Tenancy).where(
+                Tenancy.tenant_id == tenant_id,
+                Tenancy.status == "active",
+                Tenancy.deleted_at.is_(None),
+            )
+        ))
+        for tenancy in active_tenancies:
+            tenancy.status = "completed"
+            tenancy.move_out_date = utc_now().date()
+            tenancy.deleted_at = utc_now()
+            tenancy.updated_by_id = current_user.id
+            if tenancy.bed_ids:
+                beds = list(self.db.scalars(
+                    select(Bed).where(Bed.id.in_(tenancy.bed_ids), Bed.deleted_at.is_(None))
+                ))
+                for b in beds:
+                    b.status = "vacant"
+                    b.updated_by_id = current_user.id
+
+        tenant.status = "inactive"
+        tenant.deleted_at = utc_now()
+        tenant.updated_by_id = current_user.id
+        self.audit.record(
+            user_id=current_user.id,
+            action="tenant.soft_delete",
+            entity_type="tenant",
+            entity_id=tenant.id,
+            metadata={"reason": "Tenant moved out / deleted from app"},
+        )
+        self.db.commit()
+
+    def update_tenancy_rent(self, tenancy_id: int, payload: TenancyRentUpdate, current_user: User) -> Tenancy:
+        if current_user.role.name != "owner":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owner can modify agreed rent")
+
+        from sqlalchemy import select
+        from app.features.tenants.models import Tenancy
+
+        tenancy = self.db.scalar(select(Tenancy).where(Tenancy.id == tenancy_id, Tenancy.deleted_at.is_(None)))
+        if tenancy is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenancy not found")
+
+        old_rent = str(tenancy.monthly_rent)
+        tenancy.monthly_rent = payload.monthly_rent
+        tenancy.updated_by_id = current_user.id
+        self.audit.record(
+            user_id=current_user.id,
+            action="tenancy.rent_update",
+            entity_type="tenancy",
+            entity_id=tenancy.id,
+            metadata={"old_rent": old_rent, "new_rent": str(payload.monthly_rent)},
+        )
+        self.db.commit()
+        self.db.refresh(tenancy)
+        return tenancy

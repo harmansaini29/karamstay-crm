@@ -133,3 +133,26 @@ class DocumentService:
         self.db.commit()
         self.db.refresh(document)
         return document
+
+    def delete_document(self, document_id: int, current_user: User) -> None:
+        if current_user.role.name != "owner":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owner can delete documents from vault")
+        document = self.repository.get_document(document_id)
+        if document is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+        try:
+            get_storage().delete(key=document.file_key)
+        except Exception:
+            pass
+
+        document.deleted_at = utc_now()
+        document.updated_by_id = current_user.id
+        self.audit.record(
+            user_id=current_user.id,
+            action="document.delete",
+            entity_type="document",
+            entity_id=document.id,
+            metadata={"file_key": document.file_key, "file_name": document.file_name},
+        )
+        self.db.commit()

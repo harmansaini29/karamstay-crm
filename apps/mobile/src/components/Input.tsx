@@ -9,6 +9,7 @@ import {
   StyleSheet,
   ViewStyle,
   TextStyle,
+  ScrollView,
 } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { color as semanticColor } from '../theme/tokens';
@@ -20,7 +21,7 @@ interface InputProps {
   onChangeText: (text: string) => void;
   placeholder?: string;
   secureTextEntry?: boolean;
-  keyboardType?: 'default' | 'number-pad' | 'decimal-pad' | 'numeric' | 'email-address' | 'phone-pad';
+  keyboardType?: 'default' | 'number-pad' | 'decimal-pad' | 'numeric' | 'email-address' | 'phone-pad' | 'numbers-and-punctuation';
   error?: string;
   type?: 'text' | 'select' | 'date';
   options?: { label: string; value: string }[];
@@ -33,6 +34,12 @@ interface InputProps {
   onBlur?: () => void;
   multiline?: boolean;
 }
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+const WEEK_DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 export const Input: React.FC<InputProps> = ({
   label,
@@ -56,6 +63,13 @@ export const Input: React.FC<InputProps> = ({
   const { colors, radius, space, font } = useTheme();
   const [isFocused, setIsFocused] = useState(false);
   const [isSelectOpen, setIsSelectOpen] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isYearPickerOpen, setIsYearPickerOpen] = useState(false);
+
+  // Calendar navigation state
+  const initialDate = value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(value) : new Date();
+  const [calYear, setCalYear] = useState(initialDate.getFullYear());
+  const [calMonth, setCalMonth] = useState(initialDate.getMonth()); // 0-11
 
   const containerStyle: ViewStyle = {
     marginBottom: space.md,
@@ -69,8 +83,6 @@ export const Input: React.FC<InputProps> = ({
     marginBottom: space.xs,
   };
 
-  // Airbnb text-input: white surface, 1px hairline, 8px radius, ~54px. On focus the
-  // border thickens to 2px ink (colors.text) — no glow, no colored ring.
   const inputContainerStyle: ViewStyle = {
     flexDirection: 'row',
     alignItems: 'center',
@@ -110,7 +122,7 @@ export const Input: React.FC<InputProps> = ({
           <Text style={{ color: semanticColor.error.fg, fontSize: 12, marginTop: space.xs }}>{error}</Text>
         ) : null}
 
-        <Modal visible={isSelectOpen} transparent animationType="slide">
+        <Modal visible={isSelectOpen} transparent animationType="slide" onRequestClose={() => setIsSelectOpen(false)}>
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl }]}>
               {/* Drag Indicator Handle */}
@@ -164,6 +176,188 @@ export const Input: React.FC<InputProps> = ({
     );
   };
 
+  // ─── Interactive Calendar Picker Implementation ───────────────────────────
+  const prevMonth = () => {
+    if (calMonth === 0) {
+      setCalMonth(11);
+      setCalYear(calYear - 1);
+    } else {
+      setCalMonth(calMonth - 1);
+    }
+  };
+
+  const nextMonth = () => {
+    if (calMonth === 11) {
+      setCalMonth(0);
+      setCalYear(calYear + 1);
+    } else {
+      setCalMonth(calMonth + 1);
+    }
+  };
+
+  const handleSelectDay = (day: number) => {
+    const formattedMonth = String(calMonth + 1).padStart(2, '0');
+    const formattedDay = String(day).padStart(2, '0');
+    const fullDateStr = `${calYear}-${formattedMonth}-${formattedDay}`;
+    onChangeText(fullDateStr);
+    setIsCalendarOpen(false);
+    setIsYearPickerOpen(false);
+  };
+
+  const renderCalendarModal = () => {
+    const firstDayIndex = new Date(calYear, calMonth, 1).getDay(); // 0 (Sun) to 6 (Sat)
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate(); // 28-31
+
+    const daysArray: (number | null)[] = [];
+    for (let i = 0; i < firstDayIndex; i++) {
+      daysArray.push(null);
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      daysArray.push(d);
+    }
+
+    // Available years: 1940 to 2035 (descending for easy DOB selection)
+    const years = [];
+    const currentYear = new Date().getFullYear();
+    for (let y = currentYear + 5; y >= 1940; y--) {
+      years.push(y);
+    }
+
+    return (
+      <Modal visible={isCalendarOpen} transparent animationType="fade" onRequestClose={() => setIsCalendarOpen(false)}>
+        <View style={styles.calendarOverlay}>
+          <View style={[styles.calendarCard, { backgroundColor: colors.surface, borderRadius: radius.lg, borderColor: colors.border }]}>
+            {/* Header: Month / Year / Nav */}
+            <View style={styles.calNavHeader}>
+              <TouchableOpacity onPress={prevMonth} style={styles.calNavBtn}>
+                <Ionicons name="chevron-back" size={20} color={colors.text} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setIsYearPickerOpen(!isYearPickerOpen)}
+                style={{ flexDirection: 'row', alignItems: 'center' }}
+              >
+                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: 16 }}>
+                  {MONTH_NAMES[calMonth]} {calYear}
+                </Text>
+                <Ionicons
+                  name={isYearPickerOpen ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={colors.primary}
+                  style={{ marginLeft: 4 }}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={nextMonth} style={styles.calNavBtn}>
+                <Ionicons name="chevron-forward" size={20} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick Year Jump View */}
+            {isYearPickerOpen ? (
+              <ScrollView style={{ maxHeight: 240, marginVertical: 8 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {years.map((yr) => (
+                    <TouchableOpacity
+                      key={yr}
+                      onPress={() => {
+                        setCalYear(yr);
+                        setIsYearPickerOpen(false);
+                      }}
+                      style={[
+                        styles.yearItem,
+                        {
+                          backgroundColor: yr === calYear ? colors.primary : 'transparent',
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={{ color: yr === calYear ? '#fff' : colors.text, fontWeight: yr === calYear ? 'bold' : 'normal' }}>
+                        {yr}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            ) : (
+              <>
+                {/* Week Day Labels */}
+                <View style={styles.weekRow}>
+                  {WEEK_DAYS.map((w, idx) => (
+                    <Text key={idx} style={[styles.weekLabel, { color: colors.textMuted }]}>
+                      {w}
+                    </Text>
+                  ))}
+                </View>
+
+                {/* Day Grid */}
+                <View style={styles.daysGrid}>
+                  {daysArray.map((day, idx) => {
+                    if (day === null) {
+                      return <View key={idx} style={styles.dayCell} />;
+                    }
+                    const dayStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const isSelected = value === dayStr;
+
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => handleSelectDay(day)}
+                        style={[
+                          styles.dayCell,
+                          isSelected && { backgroundColor: colors.primary, borderRadius: 20 },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: isSelected ? '#FFFFFF' : colors.text,
+                            fontWeight: isSelected ? '700' : '500',
+                            fontSize: 14,
+                          }}
+                        >
+                          {day}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {/* Bottom Footer Actions */}
+            <View style={[styles.calFooter, { borderTopColor: colors.border }]}>
+              <TouchableOpacity
+                onPress={() => {
+                  const now = new Date();
+                  setCalYear(now.getFullYear());
+                  setCalMonth(now.getMonth());
+                  handleSelectDay(now.getDate());
+                }}
+                style={styles.calFooterBtn}
+              >
+                <Text style={{ color: colors.primary, fontWeight: '600' }}>Today</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  onChangeText('');
+                  setIsCalendarOpen(false);
+                }}
+                style={styles.calFooterBtn}
+              >
+                <Text style={{ color: colors.textMuted, fontWeight: '500' }}>Clear</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => setIsCalendarOpen(false)} style={styles.calFooterBtn}>
+                <Text style={{ color: colors.text, fontWeight: 'bold' }}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   const renderDate = () => {
     return (
       <View style={containerStyle}>
@@ -180,11 +374,19 @@ export const Input: React.FC<InputProps> = ({
             onBlur={() => setIsFocused(false)}
             editable={!disabled}
           />
-          <Ionicons name="calendar-outline" size={20} color={colors.textMuted} />
+          <TouchableOpacity
+            onPress={() => !disabled && setIsCalendarOpen(true)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={{ padding: 4 }}
+          >
+            <Ionicons name="calendar-outline" size={22} color={colors.primary} />
+          </TouchableOpacity>
         </View>
         {error ? (
           <Text style={{ color: semanticColor.error.fg, fontSize: 12, marginTop: space.xs }}>{error}</Text>
         ) : null}
+
+        {renderCalendarModal()}
       </View>
     );
   };
@@ -268,5 +470,73 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  calendarOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  calendarCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderWidth: 1,
+    padding: 16,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  calNavHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  calNavBtn: {
+    padding: 8,
+  },
+  weekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  weekLabel: {
+    width: '14.28%',
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  daysGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  dayCell: {
+    width: '14.28%',
+    height: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 2,
+  },
+  yearItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    margin: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  calFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    paddingTop: 12,
+    marginTop: 12,
+  },
+  calFooterBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
 });

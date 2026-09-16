@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert } from 'react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
 import { Card } from '../../components/Card';
@@ -30,8 +30,17 @@ interface TenantProfile {
 
 export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const { id } = route.params;
-  const { colors, font, space } = useTheme();
+  const { colors, font, space, radius } = useTheme();
   const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
+  const queryClient = useQueryClient();
+  const { role } = useAuth();
+  const isOwner = role === 'owner';
+  const isStaff = role === 'staff';
+
+  const [isEditRentModalOpen, setIsEditRentModalOpen] = useState(false);
+  const [newRentAmount, setNewRentAmount] = useState('');
+  const [isUpdatingRent, setIsUpdatingRent] = useState(false);
+  const [isDeletingTenant, setIsDeletingTenant] = useState(false);
 
   // Get tenant profile
   const {
@@ -49,13 +58,16 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
   });
 
   // Directly resolve the active tenancy for this specific tenant
-  // Uses the tenant_id param so we only get THIS tenant's tenancy (not a random one from invoices)
-  const { data: tenancy } = useQuery<any>({
+  // Backend returns list[TenancyResponse]
+  const { data: tenancy, refetch: refetchTenancy } = useQuery<any>({
     queryKey: ['tenancy-by-tenant', id],
     queryFn: async () => {
       try {
         const res = await apiClient.get(`/tenancies?tenant_id=${id}`);
-        // Mock returns a single tenancy object or {} on 404
+        if (Array.isArray(res.data)) {
+          const active = res.data.find((t: any) => t.status === 'active');
+          return active || res.data[0] || null;
+        }
         if (res.data && res.data.id) return res.data;
         return null;
       } catch {
@@ -88,8 +100,62 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
 
   // ⚠️ ALL hooks must be declared before any conditional returns (Rules of Hooks)
   const { maskAmount } = useFinancialMask();
-  const { role } = useAuth();
-  const isStaff = role === 'staff';
+
+  const handleOpenEditRent = () => {
+    setNewRentAmount(tenancy?.monthly_rent ? String(tenancy.monthly_rent) : '');
+    setIsEditRentModalOpen(true);
+  };
+
+  const handleSaveRent = async () => {
+    const rentNum = parseFloat(newRentAmount);
+    if (isNaN(rentNum) || rentNum <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid monthly rent amount.');
+      return;
+    }
+    setIsUpdatingRent(true);
+    try {
+      await apiClient.patch(`/tenancies/${tenancy.id}/rent`, {
+        monthly_rent: rentNum,
+      });
+      await refetchTenancy();
+      queryClient.invalidateQueries({ queryKey: ['tenancies'] });
+      setIsEditRentModalOpen(false);
+      Alert.alert('Rent Updated', `Agreed monthly rent updated to ₹${rentNum.toLocaleString('en-IN')}`);
+    } catch (err: any) {
+      Alert.alert('Update Failed', parseApiError(err).message);
+    } finally {
+      setIsUpdatingRent(false);
+    }
+  };
+
+  const handleArchiveTenant = () => {
+    Alert.alert(
+      'Archive & Remove Tenant',
+      `Are you sure you want to remove ${tenant?.name} from active PG records? All data, tenancies, documents, and payment history will be safely preserved in AWS cloud database.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Archive & Remove',
+          style: 'destructive',
+          onPress: async () => {
+            if (!tenant) return;
+            setIsDeletingTenant(true);
+            try {
+              await apiClient.delete(`/tenants/${tenant.id}`);
+              queryClient.invalidateQueries({ queryKey: ['tenants'] });
+              queryClient.invalidateQueries({ queryKey: ['properties'] });
+              Alert.alert('Tenant Archived', `${tenant.name} has been removed from active app view.`);
+              navigation.goBack();
+            } catch (err: any) {
+              Alert.alert('Archive Failed', parseApiError(err).message);
+            } finally {
+              setIsDeletingTenant(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   // Navigates to the Finance tab → Ledger screen for a given tenancyId.
   // Uses getParent() as a fallback for deep nesting inside TenantsStack.
@@ -212,7 +278,14 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
 
             <View style={styles.profileGrid}>
               <View style={styles.gridCol}>
-                <Text style={[styles.label, { color: colors.textMuted }]}>Monthly Rent</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={[styles.label, { color: colors.textMuted }]}>Monthly Rent</Text>
+                  {isOwner ? (
+                    <TouchableOpacity onPress={handleOpenEditRent} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Edit</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
                 <Text style={[styles.val, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
                   {maskAmount(tenancy.monthly_rent)}
                 </Text>
@@ -317,7 +390,65 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
             />
           </Card>
         )}
+
+        {/* Soft Delete / Move Out Tenant Option (Owner Only) */}
+        {isOwner ? (
+          <View style={{ marginTop: space.xl, marginBottom: space.lg }}>
+            <Button
+              label={isDeletingTenant ? "Archiving..." : "Archive & Remove Tenant"}
+              onPress={handleArchiveTenant}
+              variant="destructive"
+              disabled={isDeletingTenant}
+            />
+            <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, textAlign: 'center', marginTop: space.xs }}>
+              Soft delete: Removes active profile while preserving financial history & records in cloud database.
+            </Text>
+          </View>
+        ) : null}
       </ScrollView>
+
+      {/* Edit Rent Modal (Owner Only) */}
+      <Modal
+        visible={isEditRentModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsEditRentModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Card style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize, marginBottom: space.xs }}>
+              Modify Agreed Monthly Rent
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: space.md }}>
+              Update the contracted monthly rent for {tenant.name}. Only the property owner has authority to adjust agreed rent.
+            </Text>
+
+            <TextInput
+              style={[styles.rentInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.bg }]}
+              placeholder="Enter monthly rent (e.g. 7500)"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numeric"
+              value={newRentAmount}
+              onChangeText={setNewRentAmount}
+            />
+
+            <View style={[styles.buttonRow, { marginTop: space.md }]}>
+              <Button
+                label="Cancel"
+                onPress={() => setIsEditRentModalOpen(false)}
+                variant="secondary"
+                style={{ flex: 1, marginRight: space.sm }}
+              />
+              <Button
+                label={isUpdatingRent ? "Saving..." : "Save Rent"}
+                onPress={handleSaveRent}
+                disabled={isUpdatingRent}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </Card>
+        </View>
+      </Modal>
 
       </ResponsiveContainer>
     </SafeAreaView>
@@ -370,5 +501,27 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderWidth: 1,
+    padding: 20,
+    borderRadius: 12,
+  },
+  rentInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

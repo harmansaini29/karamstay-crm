@@ -235,13 +235,47 @@ class PropertyService:
                 bed.updated_by_id = current_user.id
                 beds.append(bed)
 
-            # Update parent unit status if all beds were previously vacant
+            # Update parent unit status
             unit = self.repository.get_unit(unit_id)
             if unit:
                 all_unit_beds = self.repository.list_beds(unit_id)
                 occupied_count = sum(1 for b in all_unit_beds if b.status == "occupied")
                 unit.status = "occupied" if occupied_count > 0 else "vacant"
                 unit.updated_by_id = current_user.id
+
+            # Synchronize active Tenancy for the tenant
+            if payload.tenant_id:
+                from app.features.tenants.models import Tenancy, Tenant
+                tenant = self.db.scalar(select(Tenant).where(Tenant.id == payload.tenant_id, Tenant.deleted_at.is_(None)))
+                if tenant:
+                    tenant.status = "active"
+                    tenant.updated_by_id = current_user.id
+                    active_tenancy = self.db.scalar(
+                        select(Tenancy).where(
+                            Tenancy.tenant_id == payload.tenant_id,
+                            Tenancy.unit_id == unit_id,
+                            Tenancy.status == "active",
+                            Tenancy.deleted_at.is_(None),
+                        )
+                    )
+                    if active_tenancy:
+                        existing_bids = active_tenancy.bed_ids or []
+                        active_tenancy.bed_ids = list(dict.fromkeys(existing_bids + payload.bed_ids))
+                        active_tenancy.updated_by_id = current_user.id
+                    else:
+                        new_tenancy = Tenancy(
+                            tenant_id=tenant.id,
+                            unit_id=unit_id,
+                            start_date=utc_now().date(),
+                            monthly_rent=unit.rent if unit else 0,
+                            security_deposit=unit.deposit if unit else 0,
+                            billing_day=1,
+                            status="active",
+                            bed_ids=payload.bed_ids,
+                            created_by_id=current_user.id,
+                            updated_by_id=current_user.id,
+                        )
+                        self.db.add(new_tenancy)
 
             self.audit.record(
                 user_id=current_user.id,
@@ -306,6 +340,26 @@ class PropertyService:
                 occupied_count = sum(1 for b in all_unit_beds if b.status == "occupied")
                 unit.status = "occupied" if occupied_count > 0 else "vacant"
                 unit.updated_by_id = current_user.id
+
+            # Sync active tenancies by removing vacated bed IDs
+            from app.features.tenants.models import Tenancy
+            active_tenancies = list(self.db.scalars(
+                select(Tenancy).where(
+                    Tenancy.unit_id == unit_id,
+                    Tenancy.status == "active",
+                    Tenancy.deleted_at.is_(None),
+                )
+            ))
+            vacated_set = set(payload.bed_ids)
+            for t in active_tenancies:
+                if t.bed_ids:
+                    remaining = [bid for bid in t.bed_ids if bid not in vacated_set]
+                    if len(remaining) != len(t.bed_ids):
+                        t.bed_ids = remaining
+                        t.updated_by_id = current_user.id
+                        if not remaining:
+                            t.status = "completed"
+                            t.move_out_date = utc_now().date()
 
             self.audit.record(
                 user_id=current_user.id,

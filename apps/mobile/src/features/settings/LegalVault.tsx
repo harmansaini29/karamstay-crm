@@ -8,6 +8,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -41,7 +42,12 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user } = useAuth();
   const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const queryClient = useQueryClient();
-  const isOwnerManager = user?.role?.name === 'owner' || user?.role?.name === 'manager';
+
+  const isOwner = user?.role?.name === 'owner';
+  const isManager = user?.role?.name === 'manager';
+  const isStaff = user?.role?.name === 'staff';
+  const isAuthorizedUploader = isOwner || isManager || isStaff;
+  const isOwnerManager = isOwner || isManager;
 
   const [isUploading, setIsUploading] = useState(false);
   const isPickingRef = useRef(false); // mutex: prevents concurrent picker sessions
@@ -52,11 +58,16 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [verifying, setVerifying] = useState(false);
   const [tenantPickerVisible, setTenantPickerVisible] = useState(false);
 
+  // Staged document preview & discard before S3 upload
+  const [stagedAsset, setStagedAsset] = useState<any>(null);
+  const [stagedTenantId, setStagedTenantId] = useState<number | null>(null);
+  const [previewModalVisible, setPreviewModalVisible] = useState(false);
+  const [isDeletingDoc, setIsDeletingDoc] = useState(false);
+
   // Tenants list — the uploader must choose which tenant a document belongs to
-  // (the old code hardcoded tenant_id: 1, attaching every upload to one tenant).
   const { data: tenants = [] } = useQuery<{ id: number; name: string; phone: string }[]>({
     queryKey: ['tenants'],
-    enabled: isOwnerManager,
+    enabled: isAuthorizedUploader,
     queryFn: async () => {
       const res = await apiClient.get('/tenants');
       return res.data;
@@ -110,7 +121,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
     }
   };
 
-  const handleUpload = async (tenantId: number) => {
+  const handlePickDocument = async (tenantId: number) => {
     // Mutex guard: prevents double-tap or concurrent picker sessions
     if (isPickingRef.current || isUploading) return;
     isPickingRef.current = true;
@@ -123,19 +134,34 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
       });
 
       if (result.canceled || !result.assets || result.assets.length === 0) {
-        return; // user cancelled — finally block resets the ref
+        return; // user cancelled
       }
       asset = result.assets[0];
     } catch (pickerErr: any) {
       Alert.alert('Picker Error', pickerErr?.message || 'Could not open document picker.');
       return;
     } finally {
-      // Always release the picking mutex, even on cancel/error
       isPickingRef.current = false;
     }
 
     if (!asset) return;
+    // Stage asset for review & discard before sending to cloud
+    setStagedAsset(asset);
+    setStagedTenantId(tenantId);
+    setPreviewModalVisible(true);
+  };
+
+  const handleDiscardStaged = () => {
+    setStagedAsset(null);
+    setStagedTenantId(null);
+    setPreviewModalVisible(false);
+  };
+
+  const handleConfirmUpload = async () => {
+    if (!stagedAsset || !stagedTenantId) return;
     setIsUploading(true);
+    const asset = stagedAsset;
+    const tenantId = stagedTenantId;
     try {
       // 1. Request presigned upload URL from backend for the chosen tenant
       const presignRes = await apiClient.post('/documents/presign-upload', {
@@ -172,16 +198,49 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
         tenant_id: tenantId,
       });
 
-      // Invalidate document list + agreement pipeline (AgreementWorkspace, TenantAgreementGate, owner view)
+      // Invalidate document list + agreement pipeline
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       queryClient.invalidateQueries({ queryKey: ['agreements'] });
       queryClient.invalidateQueries({ queryKey: ['tenant-agreements'] });
+      setPreviewModalVisible(false);
+      setStagedAsset(null);
+      setStagedTenantId(null);
       Alert.alert('Success', 'Legal document uploaded to vault successfully.');
     } catch (err: any) {
       Alert.alert('Upload Failed', err.message || 'Unable to complete upload');
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleDeleteDocument = () => {
+    if (!selectedDoc) return;
+    Alert.alert(
+      'Delete Document',
+      `Are you sure you want to permanently delete "${selectedDoc.file_name}" from the Legal Vault and cloud storage?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeletingDoc(true);
+            try {
+              await apiClient.delete(`/documents/${selectedDoc.id}`);
+              queryClient.invalidateQueries({ queryKey: ['documents'] });
+              queryClient.invalidateQueries({ queryKey: ['agreements'] });
+              queryClient.invalidateQueries({ queryKey: ['tenant-agreements'] });
+              setOptionsModalVisible(false);
+              Alert.alert('Document Deleted', 'The document has been permanently removed.');
+            } catch (err: any) {
+              Alert.alert('Delete Failed', parseApiError(err).message);
+            } finally {
+              setIsDeletingDoc(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const startUpload = () => {
@@ -194,7 +253,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
 
   const onPickTenant = (tenantId: number) => {
     setTenantPickerVisible(false);
-    handleUpload(tenantId);
+    handlePickDocument(tenantId);
   };
 
   const handleCardPress = (item: DocumentItem) => {
@@ -280,7 +339,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
         <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h3.fontSize }]}>
           Legal Vault
         </Text>
-        {isOwnerManager ? (
+        {isAuthorizedUploader ? (
           <TouchableOpacity onPress={startUpload} disabled={isUploading}>
             <Text style={{ color: colors.primary, fontSize: font.body.fontSize, fontWeight: '600' }}>
               {isUploading ? 'Uploading...' : 'Upload'}
@@ -393,6 +452,16 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
                 />
               </View>
             ) : null}
+
+            {isOwner ? (
+              <Button
+                label={isDeletingDoc ? "Deleting..." : "Delete Document"}
+                onPress={handleDeleteDocument}
+                variant="destructive"
+                disabled={isDeletingDoc}
+                style={{ marginTop: space.sm }}
+              />
+            ) : null}
           </Card>
         </View>
       </Modal>
@@ -440,6 +509,65 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
           </Card>
         </View>
       </Modal>
+
+      {/* Staged Document Preview & Discard Modal */}
+      <Modal
+        visible={previewModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={handleDiscardStaged}
+      >
+        <View style={styles.modalOverlay}>
+          <Card style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.modalHeader}>
+              <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
+                Preview Upload
+              </Text>
+              <TouchableOpacity onPress={handleDiscardStaged}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {stagedAsset && (stagedAsset.mimeType?.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(stagedAsset.name)) ? (
+              <Image
+                source={{ uri: stagedAsset.uri }}
+                style={styles.previewImage}
+                resizeMode="contain"
+              />
+            ) : (
+              <View style={[styles.nonImagePreview, { backgroundColor: colors.bg }]}>
+                <Ionicons name="document-text-outline" size={48} color={colors.primary} />
+                <Text style={{ color: colors.text, fontWeight: '600', marginTop: 8 }} numberOfLines={1}>
+                  {stagedAsset?.name}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                  {stagedAsset?.mimeType || 'Document'}
+                </Text>
+              </View>
+            )}
+
+            <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginVertical: space.sm }}>
+              Review the selected file. If the photo or document is blurry or incorrect, tap Discard to cancel.
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <Button
+                label="Discard"
+                onPress={handleDiscardStaged}
+                variant="destructive"
+                style={{ flex: 1, marginRight: space.sm }}
+              />
+              <Button
+                label={isUploading ? 'Uploading...' : 'Confirm & Upload'}
+                onPress={handleConfirmUpload}
+                disabled={isUploading}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </Card>
+        </View>
+      </Modal>
+
       </ResponsiveContainer>
     </SafeAreaView>
   );
@@ -514,5 +642,18 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     fontSize: 14,
     marginBottom: 16,
+  },
+  previewImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  nonImagePreview: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    borderRadius: 8,
+    marginBottom: 12,
   },
 });

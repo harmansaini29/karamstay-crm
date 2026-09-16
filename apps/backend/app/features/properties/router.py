@@ -22,11 +22,12 @@ from app.features.properties.service import PropertyService
 router = APIRouter()
 OwnerUser = Annotated[User, Depends(require_roles(["owner"]))]
 OwnerManagerUser = Annotated[User, Depends(require_roles(["owner", "manager"]))]
+OwnerManagerStaffUser = Annotated[User, Depends(require_roles(["owner", "manager", "staff"]))]
 DbSession = Annotated[Session, Depends(get_db)]
 
 
 @router.get("/properties", response_model=list[PropertyResponse])
-def list_properties(current_user: OwnerManagerUser, db: DbSession) -> list[PropertyResponse]:
+def list_properties(current_user: OwnerManagerStaffUser, db: DbSession) -> list[PropertyResponse]:
     return PropertyService(db).list_properties(current_user)
 
 
@@ -42,7 +43,7 @@ def create_property(
 @router.get("/properties/{property_id}", response_model=PropertyResponse)
 def get_property(
     property_id: int,
-    current_user: OwnerManagerUser,
+    current_user: OwnerManagerStaffUser,
     db: DbSession,
 ) -> PropertyResponse:
     return PropertyService(db).get_property_for_user(property_id, current_user)
@@ -109,7 +110,7 @@ def delete_unit(unit_id: int, current_user: OwnerUser, db: DbSession) -> Respons
 
 
 @router.get("/units/{unit_id}/beds", response_model=list[BedResponse])
-def list_beds(unit_id: int, current_user: OwnerManagerUser, db: DbSession) -> list[BedResponse]:
+def list_beds(unit_id: int, current_user: OwnerManagerStaffUser, db: DbSession) -> list[BedResponse]:
     return PropertyService(db).list_beds(unit_id, current_user)
 
 
@@ -122,7 +123,7 @@ def list_beds(unit_id: int, current_user: OwnerManagerUser, db: DbSession) -> li
 def assign_beds(
     unit_id: int,
     payload: BedAssign,
-    current_user: OwnerManagerUser,
+    current_user: OwnerManagerStaffUser,
     db: DbSession,
 ) -> list[BedResponse]:
     return PropertyService(db).assign_beds(unit_id, payload, current_user)
@@ -137,7 +138,7 @@ def assign_beds(
 def vacate_beds(
     unit_id: int,
     payload: BedVacate,
-    current_user: OwnerManagerUser,
+    current_user: OwnerManagerStaffUser,
     db: DbSession,
 ) -> list[BedResponse]:
     return PropertyService(db).vacate_beds(unit_id, payload, current_user)

@@ -50,6 +50,35 @@ export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) =
   const [editCost, setEditCost] = useState('');
   const [editAssignee, setEditAssignee] = useState('');
 
+  // Raise Ticket fields
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
+  const [selectedUnitId, setSelectedUnitId] = useState<string>('');
+  const [ticketCategory, setTicketCategory] = useState('Plumbing');
+  const [ticketPriority, setTicketPriority] = useState<string>('medium');
+  const [ticketDesc, setTicketDesc] = useState('');
+  const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
+
+  // Properties list for ticket creation
+  const { data: properties = [] } = useQuery<any[]>({
+    queryKey: ['properties-for-tickets'],
+    queryFn: async () => {
+      const res = await apiClient.get('/properties');
+      return res.data;
+    },
+    enabled: isCreateModalOpen,
+  });
+
+  // Units for selected property
+  const { data: units = [] } = useQuery<any[]>({
+    queryKey: ['units-for-property', selectedPropertyId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/properties/${selectedPropertyId}/units`);
+      return res.data;
+    },
+    enabled: isCreateModalOpen && !!selectedPropertyId,
+  });
+
   // Queries
   const {
     data: tickets = [],
@@ -119,6 +148,41 @@ export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) =
     updateMutation.mutate(payload);
   };
 
+  const handleCreateTicket = async () => {
+    if (!selectedPropertyId) {
+      Alert.alert('Required', 'Please select a property.');
+      return;
+    }
+    if (!selectedUnitId) {
+      Alert.alert('Required', 'Please select a unit.');
+      return;
+    }
+    if (!ticketDesc.trim()) {
+      Alert.alert('Required', 'Please enter a description of the issue.');
+      return;
+    }
+    setIsSubmittingTicket(true);
+    try {
+      await apiClient.post('/maintenance-tickets', {
+        property_id: parseInt(selectedPropertyId),
+        unit_id: parseInt(selectedUnitId),
+        category: ticketCategory,
+        priority: ticketPriority,
+        description: ticketDesc.trim(),
+      });
+      queryClient.invalidateQueries({ queryKey: ['maintenance-tickets'] });
+      setIsCreateModalOpen(false);
+      setTicketDesc('');
+      setSelectedUnitId('');
+      Alert.alert('Ticket Raised', 'Maintenance ticket has been logged successfully.');
+      refetch();
+    } catch (err: any) {
+      Alert.alert('Failed to Raise Ticket', parseApiError(err).message);
+    } finally {
+      setIsSubmittingTicket(false);
+    }
+  };
+
   const renderTicketItem = ({ item }: { item: Ticket }) => (
     <TouchableOpacity
       activeOpacity={0.7}
@@ -169,7 +233,20 @@ export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) =
         <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h3.fontSize }]}>
           Maintenance Tickets
         </Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity
+          onPress={() => setIsCreateModalOpen(true)}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: colors.primary + '15',
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderRadius: 8,
+          }}
+        >
+          <Ionicons name="add" size={16} color={colors.primary} />
+          <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12, marginLeft: 2 }}>Raise</Text>
+        </TouchableOpacity>
       </View>
 
 
@@ -311,6 +388,123 @@ export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) =
           </View>
         </Modal>
       ) : null}
+
+      {/* Raise Ticket Modal */}
+      <Modal
+        visible={isCreateModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsCreateModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text, fontSize: font.h3.fontSize }]}>
+                Raise Maintenance Ticket
+              </Text>
+              <TouchableOpacity onPress={() => setIsCreateModalOpen(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={{ padding: space.lg }}>
+              <Input
+                label="Property"
+                value={selectedPropertyId}
+                onChangeText={(val) => {
+                  setSelectedPropertyId(val);
+                  setSelectedUnitId('');
+                }}
+                type="select"
+                options={[
+                  { label: 'Select Property', value: '' },
+                  ...properties.map((p) => ({ label: p.name, value: String(p.id) })),
+                ]}
+              />
+
+              <Input
+                label="Unit / Room"
+                value={selectedUnitId}
+                onChangeText={setSelectedUnitId}
+                type="select"
+                disabled={!selectedPropertyId}
+                options={[
+                  { label: selectedPropertyId ? 'Select Unit' : 'Select Property First', value: '' },
+                  ...units.map((u) => ({
+                    label: `Unit ${u.unit_no}${u.floor ? ` (${u.floor})` : ''}`,
+                    value: String(u.id),
+                  })),
+                ]}
+              />
+
+              <Input
+                label="Issue Category"
+                value={ticketCategory}
+                onChangeText={setTicketCategory}
+                type="select"
+                options={[
+                  'Plumbing',
+                  'Electrical',
+                  'Carpentry',
+                  'Cleaning',
+                  'Appliance',
+                  'WiFi / Internet',
+                  'Other',
+                ].map((cat) => ({ label: cat, value: cat }))}
+              />
+
+              <Input
+                label="Priority Level"
+                value={ticketPriority}
+                onChangeText={setTicketPriority}
+                type="select"
+                options={[
+                  { label: 'Low', value: 'low' },
+                  { label: 'Medium', value: 'medium' },
+                  { label: 'High', value: 'high' },
+                  { label: 'Urgent', value: 'urgent' },
+                ]}
+              />
+
+              <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '600', marginBottom: 4, marginTop: space.xs }}>
+                Issue Description
+              </Text>
+              <TextInput
+                style={[
+                  styles.descInput,
+                  {
+                    color: colors.text,
+                    borderColor: colors.border,
+                    backgroundColor: colors.bg,
+                  },
+                ]}
+                placeholder="Describe the complaint in detail..."
+                placeholderTextColor={colors.textMuted}
+                multiline
+                numberOfLines={3}
+                value={ticketDesc}
+                onChangeText={setTicketDesc}
+              />
+
+              <View style={{ flexDirection: 'row', marginTop: space.lg }}>
+                <Button
+                  label="Cancel"
+                  onPress={() => setIsCreateModalOpen(false)}
+                  variant="secondary"
+                  style={{ flex: 1, marginRight: space.sm }}
+                />
+                <Button
+                  label={isSubmittingTicket ? 'Submitting...' : 'Submit Ticket'}
+                  onPress={handleCreateTicket}
+                  disabled={isSubmittingTicket}
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       </ResponsiveContainer>
     </SafeAreaView>
   );
@@ -375,5 +569,14 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontWeight: 'bold',
+  },
+  descInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
 });

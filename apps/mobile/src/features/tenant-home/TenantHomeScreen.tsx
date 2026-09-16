@@ -112,12 +112,52 @@ export const TenantHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
                   {tenancyContext.unit.property_name}
                 </Text>
                 <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
-                  {tenancyContext.unit.building} · Unit {tenancyContext.unit.unit_no} ({tenancyContext.unit.floor})
+                  {tenancyContext.unit.building ? `${tenancyContext.unit.building} · ` : ''}Unit {tenancyContext.unit.unit_no} {tenancyContext.unit.floor ? `(${tenancyContext.unit.floor})` : ''}
+                </Text>
+                {Array.isArray(tenancyContext.bed_ids) && tenancyContext.bed_ids.length > 0 ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <Ionicons name="bed-outline" size={13} color={colors.primary} style={{ marginRight: 4 }} />
+                    <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>
+                      Bed #{tenancyContext.bed_ids.join(', #')}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Agreed Rent & Tenancy Meta Grid */}
+            <View style={[styles.rentMetaRow, { borderTopColor: colors.border }]}>
+              <View style={styles.rentMetaCol}>
+                <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>MONTHLY RENT</Text>
+                <Text style={{ color: colors.text, fontSize: font.bodyStrong.fontSize, fontWeight: 'bold', marginTop: 2 }}>
+                  {formatCurrency(Number(tenancyContext.monthly_rent || 0))}
+                </Text>
+              </View>
+              <View style={styles.rentMetaCol}>
+                <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>BILLING DAY</Text>
+                <Text style={{ color: colors.text, fontSize: font.body.fontSize, fontWeight: '600', marginTop: 2 }}>
+                  {tenancyContext.billing_day ? `Day ${tenancyContext.billing_day}` : '1st of month'}
+                </Text>
+              </View>
+              <View style={styles.rentMetaCol}>
+                <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>DEPOSIT</Text>
+                <Text style={{ color: colors.text, fontSize: font.body.fontSize, fontWeight: '600', marginTop: 2 }}>
+                  {formatCurrency(Number(tenancyContext.security_deposit || 0))}
                 </Text>
               </View>
             </View>
           </Card>
-        ) : null}
+        ) : (
+          <Card style={[styles.unitCard, { borderColor: colors.border, alignItems: 'center', paddingVertical: space.lg }]}>
+            <Ionicons name="information-circle-outline" size={32} color={colors.primary} />
+            <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.bodyStrong.fontSize, marginTop: space.xs }}>
+              Room Assignment In Progress
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, textAlign: 'center', marginTop: 4, paddingHorizontal: space.md }}>
+              Your PG management will assign your room, bed, and confirmed rent shortly.
+            </Text>
+          </Card>
+        )}
 
         {/* Rent Due Card */}
         {activeDueInvoice ? (
@@ -227,5 +267,15 @@ const styles = StyleSheet.create({
   noticeCard: {
     borderWidth: 1,
     padding: 12,
+  },
+  rentMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    marginTop: 12,
+    paddingTop: 10,
+  },
+  rentMetaCol: {
+    flex: 1,
   },
 });

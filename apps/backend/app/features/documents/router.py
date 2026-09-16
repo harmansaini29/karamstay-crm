@@ -19,7 +19,9 @@ from app.features.documents.service import DocumentService
 
 router = APIRouter()
 OwnerManagerUser = Annotated[User, Depends(require_roles(["owner", "manager"]))]
-AnyUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "tenant"]))]
+OwnerManagerStaffUser = Annotated[User, Depends(require_roles(["owner", "manager", "staff"]))]
+OwnerUser = Annotated[User, Depends(require_roles(["owner"]))]
+AnyUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "tenant", "staff"]))]
 DbSession = Annotated[Session, Depends(get_db)]
 
 
@@ -28,14 +30,14 @@ DbSession = Annotated[Session, Depends(get_db)]
 def presign_upload(
     request: Request,
     payload: PresignUploadRequest,
-    current_user: OwnerManagerUser,
+    current_user: OwnerManagerStaffUser,
     db: DbSession,
 ) -> PresignUploadResponse:
     return PresignUploadResponse(**DocumentService(db).presign_upload(payload, current_user))
 
 
 @router.post("/documents", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
-def create_document(payload: DocumentCreate, current_user: OwnerManagerUser, db: DbSession) -> DocumentResponse:
+def create_document(payload: DocumentCreate, current_user: OwnerManagerStaffUser, db: DbSession) -> DocumentResponse:
     return DocumentService(db).create_document(payload, current_user)
 
 
@@ -63,3 +65,12 @@ def update_document_status(
     db: DbSession,
 ) -> DocumentResponse:
     return DocumentService(db).update_status(document_id, payload, current_user)
+
+@router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(
+    document_id: int,
+    current_user: OwnerUser,
+    db: DbSession,
+) -> Response:
+    DocumentService(db).delete_document(document_id, current_user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -14,9 +14,9 @@ from app.features.maintenance.schemas import (
 from app.features.maintenance.service import MaintenanceService
 
 router = APIRouter()
-AnyUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "tenant"]))]
-CreatorUser = Annotated[User, Depends(require_roles(["owner", "manager", "tenant"]))]
-OwnerManagerUser = Annotated[User, Depends(require_roles(["owner", "manager"]))]
+AnyUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "tenant", "staff"]))]
+CreatorUser = Annotated[User, Depends(require_roles(["owner", "manager", "tenant", "staff"]))]
+OwnerManagerUser = Annotated[User, Depends(require_roles(["owner", "manager", "staff"]))]
 DbSession = Annotated[Session, Depends(get_db)]
 
 
