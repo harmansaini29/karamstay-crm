@@ -59,11 +59,10 @@ class TenantService:
             entity_id=tenant.id,
         )
         # Notify active staff members
-        from sqlalchemy import select
         staff_stmt = (
-            select(UserModel.id)
-            .join(Role, Role.id == UserModel.role_id)
-            .where(Role.name == "staff", UserModel.is_active.is_(True), UserModel.deleted_at.is_(None))
+            select(User.id)
+            .join(Role, Role.id == User.role_id)
+            .where(Role.name == "staff", User.is_active.is_(True), User.deleted_at.is_(None))
         )
         staff_ids = list(self.db.scalars(staff_stmt))
         for s_id in staff_ids:
