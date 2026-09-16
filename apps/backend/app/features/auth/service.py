@@ -1,6 +1,6 @@
 import logging
 import secrets
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -190,7 +190,11 @@ class AuthService:
                 detail="Invalid refresh token",
             )
 
-        if persisted_token.revoked_at is not None or persisted_token.expires_at <= utc_now():
+        expires_at = persisted_token.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+        if persisted_token.revoked_at is not None or expires_at <= utc_now():
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Refresh token is expired or revoked",

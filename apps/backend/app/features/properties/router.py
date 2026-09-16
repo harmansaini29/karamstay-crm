@@ -68,7 +68,7 @@ def delete_property(property_id: int, current_user: OwnerUser, db: DbSession) ->
 @router.get("/properties/{property_id}/units", response_model=list[UnitResponse])
 def list_units(
     property_id: int,
-    current_user: OwnerManagerUser,
+    current_user: OwnerManagerStaffUser,
     db: DbSession,
 ) -> list[UnitResponse]:
     return PropertyService(db).list_units(property_id, current_user)
@@ -89,7 +89,7 @@ def create_unit(
 
 
 @router.get("/units/{unit_id}", response_model=UnitResponse)
-def get_unit(unit_id: int, current_user: OwnerManagerUser, db: DbSession) -> UnitResponse:
+def get_unit(unit_id: int, current_user: OwnerManagerStaffUser, db: DbSession) -> UnitResponse:
     return PropertyService(db).get_unit_for_user(unit_id, current_user)
 
 

@@ -17,6 +17,7 @@ htmlcov/
 .venv/
 venv/
 env/
+.temp_venv/
 
 # ==========================================
 # Node / React Native / Expo

@@ -23,7 +23,7 @@ router = APIRouter()
 OwnerManagerUser = Annotated[User, Depends(require_roles(["owner", "manager"]))]
 OwnerManagerStaffUser = Annotated[User, Depends(require_roles(["owner", "manager", "staff"]))]
 OwnerUser = Annotated[User, Depends(require_roles(["owner"]))]
-AnyUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "tenant"]))]
+AnyUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "tenant", "staff"]))]
 TenantSelfUser = Annotated[User, Depends(require_roles(["tenant"]))]
 DbSession = Annotated[Session, Depends(get_db)]
 
