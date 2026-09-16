@@ -32,7 +32,14 @@ class TenantCreate(BaseModel):
                     pass
         return v
 
-    @field_validator("email", "occupation", "emergency_contact_name", "emergency_contact_phone", "owner_notes", mode="before")
+    @field_validator(
+        "email",
+        "occupation",
+        "emergency_contact_name",
+        "emergency_contact_phone",
+        "owner_notes",
+        mode="before",
+    )
     @classmethod
     def clean_optional_strings(cls, v):
         if isinstance(v, str):
@@ -69,7 +76,15 @@ class TenantUpdate(BaseModel):
                     pass
         return v
 
-    @field_validator("email", "occupation", "emergency_contact_name", "emergency_contact_phone", "owner_notes", "status", mode="before")
+    @field_validator(
+        "email",
+        "occupation",
+        "emergency_contact_name",
+        "emergency_contact_phone",
+        "owner_notes",
+        "status",
+        mode="before",
+    )
     @classmethod
     def clean_optional_strings(cls, v):
         if isinstance(v, str):

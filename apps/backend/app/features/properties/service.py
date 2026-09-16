@@ -246,7 +246,10 @@ class PropertyService:
             # Synchronize active Tenancy for the tenant
             if payload.tenant_id:
                 from app.features.tenants.models import Tenancy, Tenant
-                tenant = self.db.scalar(select(Tenant).where(Tenant.id == payload.tenant_id, Tenant.deleted_at.is_(None)))
+
+                tenant = self.db.scalar(
+                    select(Tenant).where(Tenant.id == payload.tenant_id, Tenant.deleted_at.is_(None))
+                )
                 if tenant:
                     tenant.status = "active"
                     tenant.updated_by_id = current_user.id

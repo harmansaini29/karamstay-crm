@@ -1,11 +1,12 @@
 from decimal import Decimal
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLogService
 from app.core.security import utc_now
-from app.features.auth.models import Role, User, User as UserModel
+from app.features.auth.models import Role, User
 from app.features.notifications.models import Notification
 from app.features.payments.models import LedgerEntry
 from app.features.properties.models import Bed, InventoryItem
@@ -414,10 +415,6 @@ class TenantService:
         if current_user.role.name not in ("owner", "manager"):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owner or manager can delete tenant")
 
-        from sqlalchemy import select
-        from app.features.tenants.models import Tenancy
-        from app.features.properties.models import Bed
-
         active_tenancies = list(self.db.scalars(
             select(Tenancy).where(
                 Tenancy.tenant_id == tenant_id,
@@ -454,10 +451,9 @@ class TenantService:
         if current_user.role.name != "owner":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owner can modify agreed rent")
 
-        from sqlalchemy import select
-        from app.features.tenants.models import Tenancy
-
-        tenancy = self.db.scalar(select(Tenancy).where(Tenancy.id == tenancy_id, Tenancy.deleted_at.is_(None)))
+        tenancy = self.db.scalar(
+            select(Tenancy).where(Tenancy.id == tenancy_id, Tenancy.deleted_at.is_(None))
+        )
         if tenancy is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenancy not found")
 

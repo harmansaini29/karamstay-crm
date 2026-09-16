@@ -71,6 +71,7 @@ def delete_document(
     document_id: int,
     current_user: OwnerUser,
     db: DbSession,
-) -> Response:
+) -> None:
     DocumentService(db).delete_document(document_id, current_user)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return None
+

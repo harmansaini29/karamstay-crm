@@ -9,9 +9,9 @@ from app.features.auth.models import User
 from app.features.tenants.schemas import (
     TenancyCheckoutRequest,
     TenancyCheckoutResponse,
-    TenancyRentUpdate,
     TenancyContextResponse,
     TenancyCreate,
+    TenancyRentUpdate,
     TenancyResponse,
     TenantCreate,
     TenantResponse,
@@ -108,9 +108,9 @@ def delete_tenant(
     tenant_id: int,
     current_user: OwnerManagerUser,
     db: DbSession,
-) -> Response:
+) -> None:
     TenantService(db).delete_tenant(tenant_id, current_user)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return None
 
 
 @router.patch("/tenancies/{tenancy_id}/rent", response_model=TenancyResponse)

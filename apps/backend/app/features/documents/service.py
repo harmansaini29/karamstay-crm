@@ -136,7 +136,10 @@ class DocumentService:
 
     def delete_document(self, document_id: int, current_user: User) -> None:
         if current_user.role.name != "owner":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owner can delete documents from vault")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only owner can delete documents from vault",
+            )
         document = self.repository.get_document(document_id)
         if document is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
