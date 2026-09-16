@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 type SubTab = 'invoices' | 'payments' | 'expenses' | 'reports';
 
@@ -28,6 +29,7 @@ export const FinanceHome: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space, radius } = useTheme();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const isAccountant = user?.role?.name === 'accountant';
   const isOwner = user?.role?.name === 'owner';
   const isManager = user?.role?.name === 'manager';
@@ -178,7 +180,7 @@ export const FinanceHome: React.FC<{ navigation: any }> = ({ navigation }) => {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
@@ -242,7 +244,7 @@ export const FinanceHome: React.FC<{ navigation: any }> = ({ navigation }) => {
             data={invoices}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderInvoiceItem}
-            contentContainerStyle={{ padding: space.lg }}
+            contentContainerStyle={{ padding: horizontalGutter, paddingBottom: contentBottomPadding }}
             ListEmptyComponent={
               <EmptyState
                 title="No Invoices Found"
@@ -259,7 +261,7 @@ export const FinanceHome: React.FC<{ navigation: any }> = ({ navigation }) => {
             data={payments}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderPaymentItem}
-            contentContainerStyle={{ padding: space.lg }}
+            contentContainerStyle={{ padding: horizontalGutter, paddingBottom: contentBottomPadding }}
             ListEmptyComponent={
               <EmptyState title="No Payments Sighted" body="Rent payments processed will be logged here." />
             }
@@ -273,7 +275,7 @@ export const FinanceHome: React.FC<{ navigation: any }> = ({ navigation }) => {
             data={expenses}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderExpenseItem}
-            contentContainerStyle={{ padding: space.lg }}
+            contentContainerStyle={{ padding: horizontalGutter, paddingBottom: contentBottomPadding }}
             ListEmptyComponent={
               <EmptyState title="No Expenses Logged" body="Record recurring operational costs here." />
             }
@@ -283,7 +285,7 @@ export const FinanceHome: React.FC<{ navigation: any }> = ({ navigation }) => {
         ) : null}
 
         {activeTab === 'reports' ? (
-          <ScrollView contentContainerStyle={{ padding: space.lg }}>
+          <ScrollView contentContainerStyle={{ padding: horizontalGutter, paddingBottom: contentBottomPadding }}>
             <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize, marginBottom: space.md }}>
               Export Reports (PDF Format)
             </Text>

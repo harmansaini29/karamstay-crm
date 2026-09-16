@@ -10,6 +10,7 @@ import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface TenantProfile {
   id: number;
@@ -26,6 +27,7 @@ interface TenantProfile {
 export const TenantProfileScreen: React.FC = () => {
   const { colors, font, space, mode, setMode } = useTheme();
   const { logout } = useAuth();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   const {
     data: profile,
@@ -55,7 +57,7 @@ export const TenantProfileScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
@@ -67,7 +69,7 @@ export const TenantProfileScreen: React.FC = () => {
         </Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: space.lg }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}>
         {/* Profile Card */}
         <Card style={[styles.profileCard, { borderColor: colors.border }]}>
           <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '15' }]}>

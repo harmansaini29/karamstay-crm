@@ -15,6 +15,8 @@ import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
 import { Toast } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface Property {
   id: number;
@@ -23,6 +25,7 @@ interface Property {
 
 export const BroadcastNotice: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   // Form fields
   const [selectedPropertyId, setSelectedPropertyId] = useState('');
@@ -112,7 +115,8 @@ export const BroadcastNotice: React.FC<{ navigation: any }> = ({ navigation }) =
   const handleBack = () => navigation.goBack();
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
       
       <View style={styles.header}>
@@ -127,7 +131,7 @@ export const BroadcastNotice: React.FC<{ navigation: any }> = ({ navigation }) =
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: space.lg }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }} keyboardShouldPersistTaps="handled">
         <Input
           label="Scope to Property"
           value={selectedPropertyId}
@@ -161,6 +165,7 @@ export const BroadcastNotice: React.FC<{ navigation: any }> = ({ navigation }) =
           style={{ marginTop: space.md }}
         />
       </ScrollView>
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

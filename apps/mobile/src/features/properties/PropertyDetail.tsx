@@ -12,6 +12,7 @@ import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { useFinancialMask } from '../../hooks/useFinancialMask';
 
 interface Property {
@@ -40,6 +41,7 @@ interface Unit {
 export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const { id } = route.params;
   const { colors, font, space, radius } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isOwner = user?.role?.name === 'owner';
@@ -139,7 +141,7 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       {/* Header Navigation */}
       <View style={styles.header}>
@@ -166,7 +168,7 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
         data={filteredUnits}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderUnitItem}
-        contentContainerStyle={{ padding: space.lg }}
+        contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
         ListHeaderComponent={
           <View>
             {/* Property Overview */}

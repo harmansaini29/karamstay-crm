@@ -17,6 +17,7 @@ import { useAuth } from '../auth/AuthContext';
 import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { Ionicons } from '@expo/vector-icons';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface Property {
   id: number;
@@ -33,6 +34,7 @@ export const PropertiesList: React.FC<{ navigation: any }> = ({ navigation }) =>
   const { colors, font, space, radius } = useTheme();
   const { user } = useAuth();
   const isOwner = user?.role?.name === 'owner';
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   const {
     data: properties = [],
@@ -87,7 +89,7 @@ export const PropertiesList: React.FC<{ navigation: any }> = ({ navigation }) =>
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
         <View style={styles.header}>
           <View>
@@ -112,7 +114,7 @@ export const PropertiesList: React.FC<{ navigation: any }> = ({ navigation }) =>
           data={properties}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderPropertyItem}
-          contentContainerStyle={{ padding: space.lg, paddingBottom: 90 }}
+          contentContainerStyle={{ padding: horizontalGutter, paddingBottom: contentBottomPadding }}
           removeClippedSubviews
           initialNumToRender={10}
           ListEmptyComponent={

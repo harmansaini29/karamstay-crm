@@ -10,6 +10,7 @@ import { Toast } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface Property {
   id: number;
@@ -36,6 +37,7 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
     deposit: passedDeposit,
   } = route.params || {};
   const { colors, font, space } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const queryClient = useQueryClient();
 
   const [selectedTenantId, setSelectedTenantId] = useState(tenantId ? String(tenantId) : '');
@@ -266,7 +268,7 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
   // --- Render ---
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
 
@@ -281,7 +283,7 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: space.lg }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }} keyboardShouldPersistTaps="handled">
 
         {/* Tenant selector — hidden when tenantId is pre-supplied */}
         {!tenantId && (

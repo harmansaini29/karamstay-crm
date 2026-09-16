@@ -10,6 +10,7 @@ import { Toast } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface UnitFormProps {
   route: any;
@@ -21,6 +22,7 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
   const isEdit = !!id;
 
   const { colors, font, space } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const queryClient = useQueryClient();
 
   // Form states
@@ -199,7 +201,7 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
   ];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
 
@@ -214,7 +216,7 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: space.lg }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }} keyboardShouldPersistTaps="handled">
         <View style={styles.row}>
           <Input
             label="Unit Number"

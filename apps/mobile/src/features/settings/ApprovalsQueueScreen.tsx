@@ -10,6 +10,7 @@ import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface PaymentApprovalItem {
   id: number;
@@ -26,6 +27,7 @@ interface PaymentApprovalItem {
 export const ApprovalsQueueScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space, radius } = useTheme();
   const queryClient = useQueryClient();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   // Selected payment for rejection modal
   const [selectedPaymentId, setSelectedPaymentId] = useState<number | null>(null);
@@ -172,7 +174,7 @@ export const ApprovalsQueueScreen: React.FC<{ navigation: any }> = ({ navigation
   if (isError) return <ErrorState message={parseApiError(error).message} onRetry={refetch} />;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h2.fontSize }]}>
@@ -187,7 +189,7 @@ export const ApprovalsQueueScreen: React.FC<{ navigation: any }> = ({ navigation
         data={pendingPayments}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderApprovalItem}
-        contentContainerStyle={{ padding: space.lg }}
+        contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
         ListEmptyComponent={
           <EmptyState
             title="Clean Approvals Queue"

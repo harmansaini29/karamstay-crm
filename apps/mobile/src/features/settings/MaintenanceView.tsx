@@ -21,6 +21,7 @@ import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface Ticket {
   id: number;
@@ -39,6 +40,7 @@ interface Ticket {
 export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space, radius } = useTheme();
   const queryClient = useQueryClient();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'open' | 'in_progress' | 'completed' | 'closed'>('all');
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -156,7 +158,7 @@ export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) =
   const handleBack = () => navigation.goBack();
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
@@ -210,7 +212,7 @@ export const MaintenanceView: React.FC<{ navigation: any }> = ({ navigation }) =
         data={filteredTickets}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderTicketItem}
-        contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 90, flexGrow: 1 }}
+        contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding, flexGrow: 1 }}
         removeClippedSubviews
         initialNumToRender={10}
         ListEmptyComponent={

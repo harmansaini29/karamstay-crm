@@ -12,12 +12,14 @@ import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 type FinanceTab = 'invoices' | 'payments' | 'ledger';
 
 export const TenantPaymentsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space, radius } = useTheme();
   const { user } = useAuth();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState<FinanceTab>('invoices');
   
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -287,7 +289,7 @@ export const TenantPaymentsScreen: React.FC<{ navigation: any }> = ({ navigation
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
@@ -341,7 +343,7 @@ export const TenantPaymentsScreen: React.FC<{ navigation: any }> = ({ navigation
             data={invoices}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderInvoiceItem}
-            contentContainerStyle={{ padding: space.lg }}
+            contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
             ListEmptyComponent={<EmptyState title="No Invoices Sighted" body="Rent invoices generated will list here." />}
             refreshing={isInvoicesLoading}
             onRefresh={onRefresh}
@@ -353,7 +355,7 @@ export const TenantPaymentsScreen: React.FC<{ navigation: any }> = ({ navigation
             data={payments}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderPaymentItem}
-            contentContainerStyle={{ padding: space.lg }}
+            contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
             ListEmptyComponent={<EmptyState title="No Payments Recorded" body="Your processed transaction receipts will list here." />}
             refreshing={isPaymentsLoading}
             onRefresh={onRefresh}
@@ -365,7 +367,7 @@ export const TenantPaymentsScreen: React.FC<{ navigation: any }> = ({ navigation
             data={ledgerWithBalance}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderLedgerItem}
-            contentContainerStyle={{ padding: space.lg }}
+            contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
             ListEmptyComponent={<EmptyState title="Ledger Log Empty" body="Chronological statements ledger will list here." />}
             refreshing={isLedgerLoading}
             onRefresh={onRefresh}

@@ -36,6 +36,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { AgreementTrackerCard } from '../../components/AgreementTrackerCard';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -94,6 +95,7 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
 }) => {
   const { tenantId, tenantName } = route.params as { tenantId: number; tenantName: string };
   const { colors, font, space, radius } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const qc = useQueryClient();
 
   const isPickingRef = useRef(false);
@@ -388,7 +390,7 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
         {/* Header */}
         <View style={styles.header}>
@@ -400,7 +402,7 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
           <View style={{ width: 50 }} />
         </View>
 
-        <ScrollView contentContainerStyle={{ padding: space.lg }}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}>
           {/* Tenant name banner */}
           <View style={{ marginBottom: space.md, flexDirection: 'row', alignItems: 'center' }}>
             <Ionicons name="person-circle-outline" size={22} color={colors.primary} style={{ marginRight: 8 }} />

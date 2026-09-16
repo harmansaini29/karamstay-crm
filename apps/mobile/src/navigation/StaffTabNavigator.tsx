@@ -5,7 +5,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useAuth } from '../features/auth/AuthContext';
 
 // Import Screens
@@ -127,9 +127,13 @@ const getTabIcon = (routeName: string): string => {
 export const StaffTabNavigator: React.FC = () => {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { role } = useAuth();
 
   const isStaff = role === 'staff';
+  const isTablet = width >= 768;
+  const tabMaxWidth = 720;
+  const horizontalMargin = isTablet ? Math.max((width - tabMaxWidth) / 2, 24) : 0;
 
   return (
     <Tab.Navigator
@@ -142,11 +146,12 @@ export const StaffTabNavigator: React.FC = () => {
         tabBarInactiveTintColor: colors.textMuted,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          // position:absolute makes the tab bar float over content (not push it),
-          // preventing the ~1-inch white solid fill that appears behind the
-          // borderRadius on Android when the bar uses elevation.
           position: 'absolute',
+          left: horizontalMargin,
+          right: horizontalMargin,
+          bottom: isTablet ? 16 : 0,
           backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.surface,
+          borderRadius: isTablet ? 24 : 0,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
           borderTopWidth: 0,
@@ -164,6 +169,7 @@ export const StaffTabNavigator: React.FC = () => {
             <View
               style={{
                 flex: 1,
+                borderRadius: isTablet ? 24 : 0,
                 borderTopLeftRadius: 24,
                 borderTopRightRadius: 24,
                 overflow: 'hidden',

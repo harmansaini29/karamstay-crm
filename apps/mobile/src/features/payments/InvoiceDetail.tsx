@@ -9,6 +9,7 @@ import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface Invoice {
   id: number;
@@ -23,6 +24,7 @@ interface Invoice {
 export const InvoiceDetail: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const { id } = route.params;
   const { colors, font, space } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   const {
     data: invoice,
@@ -56,7 +58,7 @@ export const InvoiceDetail: React.FC<{ route: any; navigation: any }> = ({ route
   const totalAmount = Number(invoice.amount) + Number(invoice.late_fee_amount);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       <View style={styles.header}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
@@ -69,7 +71,7 @@ export const InvoiceDetail: React.FC<{ route: any; navigation: any }> = ({ route
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: space.lg }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}>
         <Card style={{ borderWidth: 1, marginBottom: space.md }}>
           <View style={styles.titleRow}>
             <View>

@@ -33,6 +33,7 @@ import { Card } from '../../components/Card';
 import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { AgreementTrackerCard } from '../../components/AgreementTrackerCard';
 
 // ─── Template definitions ─────────────────────────────────────────────────────
@@ -104,6 +105,7 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
 }) => {
   const { agreementId } = route.params as { agreementId: number };
   const { colors, font, space } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const qc = useQueryClient();
 
   const [formValues, setFormValues] = useState<Record<string, string>>({});
@@ -192,7 +194,7 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
 
   if (submitted && agreement?.tracker_stage >= 2) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
         <ResponsiveContainer>
           <ScrollView contentContainerStyle={{ padding: space.lg, alignItems: 'center' }}>
             <View style={{ marginTop: 60, alignItems: 'center' }}>
@@ -216,7 +218,7 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           {/* Header */}
@@ -229,7 +231,7 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
             <View style={{ width: 50 }} />
           </View>
 
-          <ScrollView contentContainerStyle={{ padding: space.lg }}>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}>
             {/* Template banner */}
             <Card style={{ borderWidth: 1, marginBottom: space.md, flexDirection: 'row', alignItems: 'center', padding: 12 }}>
               <Ionicons name="document-text-outline" size={22} color={colors.primary} style={{ marginRight: 10 }} />

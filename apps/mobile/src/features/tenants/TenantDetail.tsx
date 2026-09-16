@@ -10,6 +10,7 @@ import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { useFinancialMask } from '../../hooks/useFinancialMask';
 import { useAuth } from '../auth/AuthContext';
 
@@ -30,6 +31,7 @@ interface TenantProfile {
 export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const { id } = route.params;
   const { colors, font, space } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   // Get tenant profile
   const {
@@ -118,7 +120,7 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       <View style={styles.header}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
@@ -130,7 +132,7 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: space.lg }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}>
         {/* Profile Card */}
         <Card style={{ borderWidth: 1, marginBottom: space.md }}>
           <View style={styles.titleRow}>

@@ -12,10 +12,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../auth/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 export const TenantHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space } = useTheme();
   const { user } = useAuth();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -80,10 +82,10 @@ export const TenantHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       <ScrollView
-        contentContainerStyle={{ padding: space.lg }}
+        contentContainerStyle={{ padding: horizontalGutter, paddingBottom: contentBottomPadding }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
         }

@@ -11,6 +11,7 @@ import { Toast, LoadingSkeleton, ErrorState, EmptyState } from '../../components
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface Ticket {
   id: number;
@@ -24,6 +25,7 @@ interface Ticket {
 export const TenantComplaintsScreen: React.FC = () => {
   const { colors, font, space, radius } = useTheme();
   const queryClient = useQueryClient();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -166,7 +168,7 @@ export const TenantComplaintsScreen: React.FC = () => {
   ];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
       
@@ -193,7 +195,7 @@ export const TenantComplaintsScreen: React.FC = () => {
         data={tickets}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderTicketItem}
-        contentContainerStyle={{ padding: space.lg }}
+        contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
         ListEmptyComponent={
           <EmptyState
             title="All Clear!"

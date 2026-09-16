@@ -6,10 +6,12 @@ import { Card } from '../../components/Card';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 export const MoreHome: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space, radius } = useTheme();
   const { user, logout } = useAuth();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   const isOwner = user?.role?.name === 'owner';
 
@@ -63,9 +65,9 @@ export const MoreHome: React.FC<{ navigation: any }> = ({ navigation }) => {
   ];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
-        <ScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: 90 }}>
+        <ScrollView contentContainerStyle={{ padding: horizontalGutter, paddingBottom: contentBottomPadding }}>
           {/* Profile Card */}
           <Card style={[styles.profileCard, { borderColor: colors.border }]}>
             <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '15' }]}>

@@ -10,6 +10,7 @@ import { Toast, LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { useFinancialMask } from '../../hooks/useFinancialMask';
 
 interface LedgerEntry {
@@ -31,6 +32,7 @@ interface Tenancy {
 export const CheckOutForm: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const { tenancyId } = route.params;
   const { colors, font, space, radius } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const queryClient = useQueryClient();
 
   // Inputs
@@ -166,7 +168,7 @@ export const CheckOutForm: React.FC<{ route: any; navigation: any }> = ({ route,
   if (isTenancyLoading || isLedgerLoading) return <LoadingSkeleton variant="detail" />;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
         <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
 
@@ -181,7 +183,7 @@ export const CheckOutForm: React.FC<{ route: any; navigation: any }> = ({ route,
           <View style={{ width: 40 }} />
         </View>
 
-        <ScrollView contentContainerStyle={{ padding: space.lg }} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }} keyboardShouldPersistTaps="handled">
           <Input
             label="Move-out Date"
             value={moveOutDate}

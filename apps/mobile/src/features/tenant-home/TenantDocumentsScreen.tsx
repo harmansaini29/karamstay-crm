@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface DocumentItem {
   id: number;
@@ -23,6 +24,7 @@ interface DocumentItem {
 
 export const TenantDocumentsScreen: React.FC = () => {
   const { colors, font, space } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   const {
     data: documents = [],
@@ -88,7 +90,7 @@ export const TenantDocumentsScreen: React.FC = () => {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
@@ -104,7 +106,7 @@ export const TenantDocumentsScreen: React.FC = () => {
         data={documents}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderDocumentItem}
-        contentContainerStyle={{ padding: space.lg }}
+        contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
         ListEmptyComponent={
           <EmptyState
             title="Vault is Empty"

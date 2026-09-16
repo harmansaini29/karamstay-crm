@@ -14,6 +14,8 @@ import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
 import { Toast } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface SettingsData {
   late_fee_grace_days: number;
@@ -26,6 +28,7 @@ interface SettingsData {
 
 export const SettingsView: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const queryClient = useQueryClient();
 
   // Form fields
@@ -122,79 +125,81 @@ export const SettingsView: React.FC<{ navigation: any }> = ({ navigation }) => {
   const handleBack = () => navigation.goBack();
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
-      <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
-      
-      <View style={styles.header}>
-        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={handleBack}>
-          <Ionicons name="arrow-back" size={20} color={colors.primary} />
-          <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Cancel</Text>
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h3.fontSize }]}>
-          Operating Settings
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
+        <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
+        
+        <View style={styles.header}>
+          <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={20} color={colors.primary} />
+            <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h3.fontSize }]}>
+            Operating Settings
+          </Text>
+          <View style={{ width: 40 }} />
+        </View>
 
-      <ScrollView contentContainerStyle={{ padding: space.lg }} keyboardShouldPersistTaps="handled">
-        <Input
-          label="Late Fee Grace Days"
-          value={graceDays}
-          onChangeText={setGraceDays}
-          placeholder="0"
-          keyboardType="numeric"
-          error={errors.graceDays}
-        />
+        <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }} keyboardShouldPersistTaps="handled">
+          <Input
+            label="Late Fee Grace Days"
+            value={graceDays}
+            onChangeText={setGraceDays}
+            placeholder="0"
+            keyboardType="numeric"
+            error={errors.graceDays}
+          />
 
-        <Input
-          label="Late Fee Percent Per Day (%)"
-          value={feePercent}
-          onChangeText={setFeePercent}
-          placeholder="0.0"
-          keyboardType="decimal-pad"
-          error={errors.feePercent}
-        />
+          <Input
+            label="Late Fee Percent Per Day (%)"
+            value={feePercent}
+            onChangeText={setFeePercent}
+            placeholder="0.0"
+            keyboardType="decimal-pad"
+            error={errors.feePercent}
+          />
 
-        <Input
-          label="Brand Name"
-          value={brandName}
-          onChangeText={setBrandName}
-          placeholder="e.g. KaramStay Residences"
-          error={errors.brandName}
-        />
+          <Input
+            label="Brand Name"
+            value={brandName}
+            onChangeText={setBrandName}
+            placeholder="e.g. KaramStay Residences"
+            error={errors.brandName}
+          />
 
-        <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: 14, marginVertical: space.sm }}>
-          WhatsApp Notice Templates
-        </Text>
+          <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: 14, marginVertical: space.sm }}>
+            WhatsApp Notice Templates
+          </Text>
 
-        <Input
-          label="WhatsApp OTP Template"
-          value={otpTemplate}
-          onChangeText={setOtpTemplate}
-          placeholder="otp_template_name"
-        />
+          <Input
+            label="WhatsApp OTP Template"
+            value={otpTemplate}
+            onChangeText={setOtpTemplate}
+            placeholder="otp_template_name"
+          />
 
-        <Input
-          label="WhatsApp Payment Confirmation Template"
-          value={payConfTemplate}
-          onChangeText={setPayConfTemplate}
-          placeholder="pay_confirm_template_name"
-        />
+          <Input
+            label="WhatsApp Payment Confirmation Template"
+            value={payConfTemplate}
+            onChangeText={setPayConfTemplate}
+            placeholder="pay_confirm_template_name"
+          />
 
-        <Input
-          label="WhatsApp Broadcast Notice Template"
-          value={noticeTemplate}
-          onChangeText={setNoticeTemplate}
-          placeholder="notice_template_name"
-        />
+          <Input
+            label="WhatsApp Broadcast Notice Template"
+            value={noticeTemplate}
+            onChangeText={setNoticeTemplate}
+            placeholder="notice_template_name"
+          />
 
-        <Button
-          label="Save Settings"
-          onPress={handleSubmit}
-          loading={updateSettingsMutation.isPending || isLoading}
-          style={{ marginTop: space.md }}
-        />
-      </ScrollView>
+          <Button
+            label="Save Settings"
+            onPress={handleSubmit}
+            loading={updateSettingsMutation.isPending || isLoading}
+            style={{ marginTop: space.md }}
+          />
+        </ScrollView>
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

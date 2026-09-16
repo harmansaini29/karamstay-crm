@@ -21,6 +21,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Badge } from '../../components/Badge';
 import * as DocumentPicker from 'expo-document-picker';
 import * as WebBrowser from 'expo-web-browser';
+import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface DocumentItem {
   id: number;
@@ -37,6 +39,7 @@ interface DocumentItem {
 export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space, radius } = useTheme();
   const { user } = useAuth();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const queryClient = useQueryClient();
   const isOwnerManager = user?.role?.name === 'owner' || user?.role?.name === 'manager';
 
@@ -265,7 +268,8 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
   const handleBack = () => navigation.goBack();
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={handleBack}>
@@ -332,7 +336,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
         data={documents}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderDocumentItem}
-        contentContainerStyle={{ padding: space.lg }}
+        contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
         ListEmptyComponent={
           <EmptyState
             title="Empty Legal Vault"
@@ -436,6 +440,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
           </Card>
         </View>
       </Modal>
+      </ResponsiveContainer>
     </SafeAreaView>
   );
 };

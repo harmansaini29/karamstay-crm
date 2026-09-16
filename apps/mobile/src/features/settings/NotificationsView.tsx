@@ -9,6 +9,7 @@ import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface NotificationItem {
   id: number;
@@ -23,6 +24,7 @@ interface NotificationItem {
 
 export const NotificationsView: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const queryClient = useQueryClient();
 
   const {
@@ -89,7 +91,7 @@ export const NotificationsView: React.FC<{ navigation: any }> = ({ navigation })
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
@@ -107,7 +109,7 @@ export const NotificationsView: React.FC<{ navigation: any }> = ({ navigation })
         data={notifications}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderNotifItem}
-        contentContainerStyle={{ padding: space.lg, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
         ListEmptyComponent={
           <EmptyState
             title="All Caught Up!"

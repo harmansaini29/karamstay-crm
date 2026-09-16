@@ -34,6 +34,7 @@ import { Input } from '../../components/Input';
 import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ interface StaffMember {
 export const StaffManagementScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space, radius } = useTheme();
   const qc = useQueryClient();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [formName, setFormName] = useState('');
@@ -244,7 +246,7 @@ export const StaffManagementScreen: React.FC<{ navigation: any }> = ({ navigatio
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
         {/* Header */}
         <View style={styles.header}>
@@ -313,7 +315,7 @@ export const StaffManagementScreen: React.FC<{ navigation: any }> = ({ navigatio
             data={staffList}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderItem}
-            contentContainerStyle={{ padding: space.lg }}
+            contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
             ItemSeparatorComponent={() => <View style={{ height: space.sm }} />}
           />
         )}

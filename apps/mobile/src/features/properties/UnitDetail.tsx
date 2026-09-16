@@ -24,6 +24,7 @@ import { BedDragGrid } from '../../components/BedDragGrid';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { useFinancialMask } from '../../hooks/useFinancialMask';
 
 interface Unit {
@@ -219,6 +220,7 @@ const BedGroupSection: React.FC<BedGroupSectionProps> = ({
 export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const { id } = route.params;
   const { colors, font, space, radius } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const { user } = useAuth();
 
   const queryClient = useQueryClient();
@@ -466,7 +468,7 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
   const occupiedCount = enrichedBeds.filter((b) => b.status === 'occupied').length;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
         <View style={styles.header}>
           <TouchableOpacity

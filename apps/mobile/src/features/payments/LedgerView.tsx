@@ -8,6 +8,7 @@ import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface LedgerEntry {
   id: number;
@@ -23,6 +24,7 @@ interface LedgerEntry {
 export const LedgerView: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const { tenancyId } = route.params;
   const { colors, font, space } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
   const {
     data: ledger = [],
@@ -104,7 +106,7 @@ export const LedgerView: React.FC<{ route: any; navigation: any }> = ({ route, n
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       <View style={styles.header}>
         <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
@@ -121,7 +123,7 @@ export const LedgerView: React.FC<{ route: any; navigation: any }> = ({ route, n
         data={ledgerWithBalance}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderLedgerItem}
-        contentContainerStyle={{ padding: space.lg, paddingBottom: 90 }}
+        contentContainerStyle={{ padding: horizontalGutter, paddingBottom: contentBottomPadding }}
         removeClippedSubviews
         initialNumToRender={15}
         ListEmptyComponent={

@@ -5,7 +5,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 // Import Screens
 import { DashboardScreen } from '../features/dashboard/DashboardScreen';
@@ -30,7 +30,7 @@ const MaintenanceStack = () => (
     <Stack.Screen name="MaintenanceHome" component={MaintenanceView} />
   </Stack.Navigator>
 );
-const ApprovalsStack = () => (
+const ApprovalsStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="ApprovalsHome" component={ApprovalsQueueScreen} />
   </Stack.Navigator>
@@ -49,6 +49,10 @@ const ProfileStack = () => (
 export const ManagerTabNavigator: React.FC = () => {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
+  const tabMaxWidth = 720;
+  const horizontalMargin = isTablet ? Math.max((width - tabMaxWidth) / 2, 24) : 0;
 
   return (
     <Tab.Navigator
@@ -68,7 +72,11 @@ export const ManagerTabNavigator: React.FC = () => {
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
           position: 'absolute',
+          left: horizontalMargin,
+          right: horizontalMargin,
+          bottom: isTablet ? 16 : 0,
           backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.surface,
+          borderRadius: isTablet ? 24 : 0,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
           borderTopWidth: 0,
@@ -83,7 +91,7 @@ export const ManagerTabNavigator: React.FC = () => {
         },
         tabBarBackground: () =>
           Platform.OS === 'ios' ? (
-            <View style={{ flex: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden', backgroundColor: colors.surface + 'CC' }}>
+            <View style={{ flex: 1, borderRadius: isTablet ? 24 : 0, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden', backgroundColor: colors.surface + 'CC' }}>
               <BlurView tint="default" intensity={80} style={StyleSheet.absoluteFill} />
             </View>
           ) : undefined,

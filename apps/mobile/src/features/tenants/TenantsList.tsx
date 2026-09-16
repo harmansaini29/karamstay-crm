@@ -10,6 +10,7 @@ import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States
 import { Ionicons } from '@expo/vector-icons';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface Tenant {
   id: number;
@@ -22,6 +23,7 @@ interface Tenant {
 
 export const TenantsList: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space, radius } = useTheme();
+  const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -81,7 +83,7 @@ export const TenantsList: React.FC<{ navigation: any }> = ({ navigation }) => {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       {/* Header */}
       <View style={styles.header}>
@@ -153,7 +155,7 @@ export const TenantsList: React.FC<{ navigation: any }> = ({ navigation }) => {
         data={filteredTenants}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderTenantItem}
-        contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 90 }}
+        contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
         removeClippedSubviews
         initialNumToRender={12}
         ListEmptyComponent={

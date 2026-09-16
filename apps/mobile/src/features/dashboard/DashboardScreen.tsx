@@ -19,6 +19,7 @@ import { LoadingSkeleton, ErrorState } from '../../components/States';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { Ionicons } from '@expo/vector-icons';
 import { useFinancialMask } from '../../hooks/useFinancialMask';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 interface Property {
   id: number;
@@ -58,6 +59,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
 
   // Financial masking: staff see '••••' on revenue/dues tiles
   const { maskAmount } = useFinancialMask();
+  const { contentBottomPadding, horizontalGutter, statTileWidth, quickActionWidth, isTablet } = useResponsiveLayout();
 
   const activeTileShadow = isDark
     ? { ...shadows.sm, shadowColor: '#000000', shadowOpacity: 0.15 }
@@ -299,10 +301,10 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
   ];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
         <ScrollView
-          contentContainerStyle={{ padding: space.lg, paddingBottom: 90 }}
+          contentContainerStyle={{ padding: horizontalGutter, paddingBottom: contentBottomPadding }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
           }
@@ -370,7 +372,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={() => navigation.navigate('Maintenance')}
-                style={[styles.statTile, { backgroundColor: colors.surface, borderColor: colors.border, width: '48%', ...activeTileShadow }]}
+                style={[styles.statTile, { backgroundColor: colors.surface, borderColor: colors.border, width: statTileWidth, ...activeTileShadow }]}
               >
                 <View style={[styles.iconContainer, { backgroundColor: semanticColor.error.solid + '15' }]}>
                   <Ionicons name="construct-outline" size={24} color={semanticColor.error.solid} />
@@ -386,7 +388,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={() => navigation.navigate('Maintenance')}
-                style={[styles.statTile, { backgroundColor: colors.surface, borderColor: colors.border, width: '48%', ...activeTileShadow }]}
+                style={[styles.statTile, { backgroundColor: colors.surface, borderColor: colors.border, width: statTileWidth, ...activeTileShadow }]}
               >
                 <View style={[styles.iconContainer, { backgroundColor: semanticColor.success.solid + '15' }]}>
                   <Ionicons name="checkmark-done" size={24} color={semanticColor.success.solid} />
@@ -462,7 +464,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
                   key={i}
                   activeOpacity={0.7}
                   onPress={tile.onPress}
-                  style={[styles.statTile, { backgroundColor: colors.surface, borderColor: colors.border, width: '48%', ...activeTileShadow }]}
+                  style={[styles.statTile, { backgroundColor: colors.surface, borderColor: colors.border, width: statTileWidth, ...activeTileShadow }]}
                 >
                   <View style={[styles.iconContainer, { backgroundColor: tile.color + '15' }]}>
                     <Ionicons name={tile.icon as any} size={24} color={tile.color} />
@@ -530,7 +532,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
             <Card style={styles.quickActionsCard}>
               <View style={styles.quickActionsRow}>
                 <TouchableOpacity
-                  style={styles.quickActionItem}
+                  style={[styles.quickActionItem, { width: quickActionWidth }]}
                   onPress={() => navigation.navigate('Tenants')}
                 >
                   <View style={[styles.actionIcon, { backgroundColor: colors.primary }]}>
@@ -542,7 +544,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
                 </TouchableOpacity>
                 
                 <TouchableOpacity
-                  style={styles.quickActionItem}
+                  style={[styles.quickActionItem, { width: quickActionWidth }]}
                   onPress={navigateToFinance}
                 >
                   <View style={[styles.actionIcon, { backgroundColor: semanticColor.success.solid }]}>
@@ -554,7 +556,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.quickActionItem}
+                  style={[styles.quickActionItem, { width: quickActionWidth }]}
                   onPress={navigateToFinance}
                 >
                   <View style={[styles.actionIcon, { backgroundColor: semanticColor.warning.solid }]}>
@@ -566,7 +568,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.quickActionItem}
+                  style={[styles.quickActionItem, { width: quickActionWidth }]}
                   onPress={() => navigation.navigate('Properties')}
                 >
                   <View style={[styles.actionIcon, { backgroundColor: colors.primary }]}>
