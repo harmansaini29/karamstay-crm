@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.security import hash_password
 from app.features.auth.models import Role, User
 
-ROLE_NAMES = ["owner", "manager", "accountant", "tenant"]
+ROLE_NAMES = ["owner", "manager", "accountant", "tenant", "staff"]
 DEFAULT_PASSWORD = "Passw0rd!123"
 
 
