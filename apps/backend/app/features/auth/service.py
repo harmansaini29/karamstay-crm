@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLogService
 from app.core.config import settings
-from app.core.notify.whatsapp import is_configured as is_whatsapp_configured, send_template_message
+from app.core.notify.whatsapp import is_configured as is_whatsapp_configured
+from app.core.notify.whatsapp import send_template_message
 from app.core.security import (
     create_access_token,
     create_refresh_token,

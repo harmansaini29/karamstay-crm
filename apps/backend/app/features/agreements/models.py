@@ -1,11 +1,9 @@
 from datetime import datetime
-from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import AuditActorMixin, Base, SoftDeleteMixin, TimestampMixin
-
 
 
 class Agreement(TimestampMixin, SoftDeleteMixin, AuditActorMixin, Base):

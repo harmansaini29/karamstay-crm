@@ -4,8 +4,6 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.features.auth.dependencies import get_current_user
-from app.features.auth.models import User
 from app.features.agreements.schemas import (
     AgreementCreate,
     AgreementResponse,
@@ -15,6 +13,8 @@ from app.features.agreements.schemas import (
     OfflineUploadStatusUpdate,
 )
 from app.features.agreements.service import AgreementService
+from app.features.auth.dependencies import get_current_user
+from app.features.auth.models import User
 
 router = APIRouter()
 

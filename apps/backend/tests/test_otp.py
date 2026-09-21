@@ -110,3 +110,23 @@ def test_otp_max_attempts_locks_out(client, db_session):
         json={"phone": "+919810000013", "code": "000000"},
     )
     assert locked_response.status_code == 429
+
+
+def test_otp_request_normalizes_phone_and_returns_dev_otp(client, db_session):
+    # Seed tenant with standard formatted phone
+    _seed_tenant(db_session, phone="+919810000099", name="Normalized User")
+
+    # Request OTP with spaces and without +91
+    response = client.post("/api/v1/auth/otp/request", json={"phone": "9810000099"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["dev_otp"] is not None
+
+    # Verify using dev_otp and the alternate phone format
+    verify_res = client.post(
+        "/api/v1/auth/otp/verify",
+        json={"phone": "9810000099", "code": data["dev_otp"]},
+    )
+    assert verify_res.status_code == 200
+    assert "access_token" in verify_res.json()
+
