@@ -57,8 +57,8 @@ def request_otp(
     payload: OtpRequestRequest,
     db: Annotated[Session, Depends(get_db)],
 ) -> OtpRequestResponse:
-    AuthService(db).request_otp(payload.phone)
-    return OtpRequestResponse()
+    dev_otp = AuthService(db).request_otp(payload.phone)
+    return OtpRequestResponse(dev_otp=dev_otp)
 
 
 @router.post("/otp/verify", response_model=TokenPairResponse)

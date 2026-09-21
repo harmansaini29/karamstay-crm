@@ -30,7 +30,7 @@ import { color as semanticColor } from '../../theme/tokens';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
-import { LoadingSkeleton, ErrorState } from '../../components/States';
+import { LoadingSkeleton } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -108,15 +108,19 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
   const {
     data: agreements = [],
     isLoading,
-    isError,
-    error,
     refetch,
   } = useQuery<Agreement[]>({
     queryKey: ['agreements', 'tenant', tenantId],
     queryFn: async () => {
-      const res = await apiClient.get(`/agreements?tenant_id=${tenantId}`);
-      return Array.isArray(res.data) ? res.data : [];
+      try {
+        const res = await apiClient.get(`/agreements?tenant_id=${tenantId}`);
+        return Array.isArray(res.data) ? res.data : [];
+      } catch {
+        // Agreements feature may not be initialized yet for this tenant
+        return [];
+      }
     },
+    retry: false,
   });
 
   const agreement = agreements[0] ?? null;
@@ -260,7 +264,6 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
   // ── Render helpers ─────────────────────────────────────────────────────────
 
   if (isLoading) return <LoadingSkeleton variant="detail" />;
-  if (isError) return <ErrorState message={parseApiError(error).message} onRetry={refetch} />;
 
   const renderTracker = () => (
     <AgreementTrackerCard stage={agreement?.tracker_stage ?? 0} />

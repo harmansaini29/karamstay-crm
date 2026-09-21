@@ -78,7 +78,7 @@ class MaintenanceService:
 
     def list_tickets(self, current_user: User) -> list[MaintenanceTicket]:
         role = current_user.role.name
-        if role in ("owner", "accountant"):
+        if role in ("owner", "accountant", "staff"):
             return self.repository.list_all()
         if role == "manager":
             return self.repository.list_for_manager(current_user.id)

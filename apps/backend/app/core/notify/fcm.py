@@ -21,7 +21,11 @@ _init_attempted = False
 def is_configured() -> bool:
     if firebase_admin is None:
         return False
-    return bool(settings.firebase_service_account_file or settings.firebase_service_account_json)
+    sa_json = (settings.firebase_service_account_json or "").strip()
+    sa_file = (settings.firebase_service_account_file or "").strip()
+    has_valid_json = bool(sa_json and sa_json != "REPLACE_ME" and sa_json.startswith("{"))
+    has_valid_file = bool(sa_file and sa_file != "REPLACE_ME")
+    return has_valid_json or has_valid_file
 
 
 def _get_app() -> Any:
@@ -32,11 +36,15 @@ def _get_app() -> Any:
     if not is_configured():
         return None
 
-    if settings.firebase_service_account_file:
-        cred = credentials.Certificate(settings.firebase_service_account_file)
-    else:
-        cred = credentials.Certificate(json.loads(settings.firebase_service_account_json))
-    _app = firebase_admin.initialize_app(cred)
+    try:
+        if settings.firebase_service_account_file and settings.firebase_service_account_file != "REPLACE_ME":
+            cred = credentials.Certificate(settings.firebase_service_account_file)
+        else:
+            cred = credentials.Certificate(json.loads(settings.firebase_service_account_json))
+        _app = firebase_admin.initialize_app(cred)
+    except Exception as exc:
+        logger.warning("FCM initialization failed: %s; notifications will run in fallback mode", exc)
+        _app = None
     return _app
 
 

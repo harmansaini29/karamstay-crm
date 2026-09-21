@@ -126,21 +126,13 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
     if (passedDeposit !== undefined) setDeposit(String(passedDeposit));
   }, [passedPropId, passedUnitId, passedRent, passedDeposit]);
 
-  // Auto-fill rent & deposit when unit changes
+  // Sync pre-supplied params on initial load only
   useEffect(() => {
-    if (selectedUnitId) {
-      if (selectedUnitId === String(passedUnitId)) {
-        if (passedRent !== undefined) setRent(String(passedRent));
-        if (passedDeposit !== undefined) setDeposit(String(passedDeposit));
-      } else {
-        const unit = units.find((u) => String(u.id) === selectedUnitId);
-        if (unit) {
-          setRent(String(unit.rent));
-          setDeposit(String(unit.deposit));
-        }
-      }
+    if (selectedUnitId && selectedUnitId === String(passedUnitId)) {
+      if (passedRent !== undefined) setRent(String(passedRent));
+      if (passedDeposit !== undefined) setDeposit(String(passedDeposit));
     }
-  }, [selectedUnitId, units, passedUnitId, passedRent, passedDeposit]);
+  }, [selectedUnitId, passedUnitId, passedRent, passedDeposit]);
 
   // Reset bed selection when the unit picker changes (unless coming from pre-selected params)
   const handleUnitChange = (val: string) => {
@@ -236,7 +228,8 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
     checkinMutation.mutate({
       tenant_id: parseInt(selectedTenantId),
       unit_id: parseInt(selectedUnitId),
-      bed_ids: bedIds,
+      // Send null for private units (whole-unit assignment); only send IDs for shared/PG beds
+      bed_ids: isMultiBedUnit && bedIds.length > 0 ? bedIds : null,
       start_date: startDate,
       monthly_rent: rentNum,
       security_deposit: depositNum,
@@ -250,7 +243,7 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
   const propertyOptions = properties.map((p) => ({ label: p.name, value: String(p.id) }));
 
   const unitOptions = availableUnits.map((u) => ({
-    label: `Unit ${u.unit_no}${u.capacity && u.capacity > 1 ? ` (${u.capacity}-bed shared)` : ' (private)'} · ₹${u.rent}`,
+    label: `Unit ${u.unit_no}${u.capacity && u.capacity > 1 ? ` (${u.capacity}-bed shared)` : ' (private)'}`,
     value: String(u.id),
   }));
 

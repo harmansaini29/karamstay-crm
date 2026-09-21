@@ -76,7 +76,7 @@ class DocumentService:
 
     def list_documents(self, current_user: User) -> list[Document]:
         role = current_user.role.name
-        if role in ("owner", "accountant"):
+        if role in ("owner", "accountant", "staff"):
             return self.repository.list_all()
         if role == "manager":
             return self.repository.list_for_manager(current_user.id)

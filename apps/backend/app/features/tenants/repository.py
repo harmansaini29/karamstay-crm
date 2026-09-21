@@ -31,8 +31,22 @@ class TenantRepository:
         return self.db.scalar(statement)
 
     def get_tenant_by_phone(self, phone: str) -> Tenant | None:
-        statement = select(Tenant).where(Tenant.phone == phone, Tenant.deleted_at.is_(None))
-        return self.db.scalar(statement)
+        raw_phone = phone.strip()
+        exact = self.db.scalar(select(Tenant).where(Tenant.phone == raw_phone, Tenant.deleted_at.is_(None)))
+        if exact is not None:
+            return exact
+
+        digits = "".join(c for c in raw_phone if c.isdigit())
+        if len(digits) >= 10:
+            last10 = digits[-10:]
+            candidates = [last10, f"+91{last10}", f"91{last10}", f"0{last10}"]
+            stmt = select(Tenant).where(Tenant.phone.in_(candidates), Tenant.deleted_at.is_(None))
+            found = self.db.scalar(stmt)
+            if found is not None:
+                return found
+            stmt_like = select(Tenant).where(Tenant.phone.like(f"%{last10}"), Tenant.deleted_at.is_(None))
+            return self.db.scalar(stmt_like)
+        return None
 
     def get_tenant_by_user_id(self, user_id: int) -> Tenant | None:
         statement = select(Tenant).where(Tenant.user_id == user_id, Tenant.deleted_at.is_(None))

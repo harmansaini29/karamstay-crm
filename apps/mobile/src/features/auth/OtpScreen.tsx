@@ -16,15 +16,15 @@ interface OtpScreenProps {
 }
 
 export const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
-  const { phone } = route.params || { phone: '' };
+  const { phone, devOtp } = route.params || { phone: '', devOtp: undefined };
   const { colors, font, space, radius } = useTheme();
   const { verifyOtp, requestOtp } = useAuth();
 
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(devOtp || '');
   const [isLoading, setIsLoading] = useState(false);
   const [cooldown, setCooldown] = useState(30);
-  const [toastMsg, setToastMsg] = useState('');
-  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMsg, setToastMsg] = useState(devOtp ? `Testing OTP: ${devOtp}` : '');
+  const [toastVisible, setToastVisible] = useState(!!devOtp);
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
   const [error, setError] = useState('');
 
@@ -58,7 +58,6 @@ export const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
     const submittedCode = code.trim();
     try {
       await verifyOtp(phone, submittedCode);
-      // Immediately clear the OTP value from state memory (DPDP & Secure Practice)
       setCode('');
       showToast('Login successful', 'success');
     } catch (err: any) {
@@ -77,9 +76,14 @@ export const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
     if (cooldown > 0) return;
     setIsLoading(true);
     try {
-      await requestOtp(phone);
+      const newDevOtp = await requestOtp(phone);
+      if (newDevOtp) {
+        setCode(newDevOtp);
+        showToast(`Testing OTP: ${newDevOtp}`, 'success');
+      } else {
+        showToast('OTP resent successfully', 'success');
+      }
       setCooldown(30);
-      showToast('OTP resent successfully', 'success');
     } catch (err: any) {
       const errMsg = err.message || '';
       if (errMsg.includes('lockout') || errMsg.includes('too many') || errMsg.includes('429')) {
@@ -167,7 +171,6 @@ export const OtpScreen: React.FC<OtpScreenProps> = ({ route, navigation }) => {
           </Card>
         </ScrollView>
       </KeyboardAvoidingView>
-    
       </ResponsiveContainer>
     </SafeAreaView>
   );

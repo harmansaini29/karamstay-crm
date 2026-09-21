@@ -41,8 +41,8 @@ class UnitCreate(BaseModel):
     floor: int | None = None
     unit_no: str = Field(min_length=1, max_length=40)
     unit_type: str = Field(min_length=2, max_length=20)
-    rent: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
-    deposit: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
+    rent: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=12, decimal_places=2)
+    deposit: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=12, decimal_places=2)
     notes: str | None = None
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)

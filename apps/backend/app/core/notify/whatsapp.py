@@ -13,7 +13,9 @@ class WhatsAppSendError(Exception):
 
 
 def is_configured() -> bool:
-    return bool(settings.whatsapp_cloud_api_token and settings.whatsapp_phone_number_id)
+    token = (settings.whatsapp_cloud_api_token or "").strip()
+    phone_id = (settings.whatsapp_phone_number_id or "").strip()
+    return bool(token and token != "REPLACE_ME" and phone_id and phone_id != "REPLACE_ME")
 
 
 def send_template_message(

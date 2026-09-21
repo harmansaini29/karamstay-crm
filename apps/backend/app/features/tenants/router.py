@@ -52,14 +52,14 @@ def get_tenant(tenant_id: int, current_user: AnyUser, db: DbSession) -> TenantRe
 def update_tenant(
     tenant_id: int,
     payload: TenantUpdate,
-    current_user: OwnerManagerUser,
+    current_user: OwnerManagerStaffUser,
     db: DbSession,
 ) -> TenantResponse:
     return TenantService(db).update_tenant(tenant_id, payload, current_user)
 
 
 @router.post("/tenancies", response_model=TenancyResponse, status_code=status.HTTP_201_CREATED)
-def check_in(payload: TenancyCreate, current_user: OwnerManagerUser, db: DbSession) -> TenancyResponse:
+def check_in(payload: TenancyCreate, current_user: OwnerManagerStaffUser, db: DbSession) -> TenancyResponse:
     return TenantService(db).check_in(payload, current_user)
 
 
@@ -87,7 +87,7 @@ def get_tenancy(tenancy_id: int, current_user: AnyUser, db: DbSession) -> Tenanc
 def checkout(
     tenancy_id: int,
     payload: TenancyCheckoutRequest,
-    current_user: OwnerManagerUser,
+    current_user: OwnerManagerStaffUser,
     db: DbSession,
 ) -> TenancyCheckoutResponse:
     service = TenantService(db)

@@ -56,7 +56,7 @@ class S3Storage:
         ttl = expires_in if expires_in is not None else self._default_expires
         return self._client.generate_presigned_url(
             "put_object",
-            Params={"Bucket": self._bucket, "Key": key, "ContentType": content_type},
+            Params={"Bucket": self._bucket, "Key": key},
             ExpiresIn=ttl,
         )
 

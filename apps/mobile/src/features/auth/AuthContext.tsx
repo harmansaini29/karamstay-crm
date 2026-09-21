@@ -25,7 +25,7 @@ interface AuthContextType {
   hasAcceptedConsent: boolean;
   setHasAcceptedConsent: (val: boolean) => void;
   login: (email: string, password: string) => Promise<void>;
-  requestOtp: (phone: string) => Promise<void>;
+  requestOtp: (phone: string) => Promise<string | undefined>;
   verifyOtp: (phone: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -151,10 +151,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const requestOtp = async (phone: string) => {
+  const requestOtp = async (phone: string): Promise<string | undefined> => {
     try {
-      // Endpoint returns success regardless of phone existence
-      await apiClient.post('/auth/otp/request', { phone });
+      const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+      const res = await apiClient.post('/auth/otp/request', { phone: cleanPhone });
+      return res.data?.dev_otp;
     } catch (err: any) {
       throw parseApiError(err);
     }
@@ -162,7 +163,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const verifyOtp = async (phone: string, code: string) => {
     try {
-      const response = await apiClient.post('/auth/otp/verify', { phone, code });
+      const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+      const response = await apiClient.post('/auth/otp/verify', { phone: cleanPhone, code: code.trim() });
       const { access_token, refresh_token } = response.data;
 
       await storage.setItem('access_token', access_token);

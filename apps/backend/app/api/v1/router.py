@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.features.agreements.router import router as agreements_router
 from app.features.analytics.router import router as analytics_router
 from app.features.auth.router import router as auth_router
 from app.features.consents.router import router as consents_router
@@ -18,6 +19,7 @@ api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
 api_router.include_router(analytics_router, tags=["analytics"])
 api_router.include_router(properties_router, tags=["properties"])
 api_router.include_router(tenants_router, tags=["tenants"])
+api_router.include_router(agreements_router, tags=["agreements"])
 api_router.include_router(payments_router, tags=["payments"])
 api_router.include_router(documents_router, tags=["documents"])
 api_router.include_router(notifications_router, tags=["notifications"])

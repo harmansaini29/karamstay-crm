@@ -529,19 +529,11 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
               </View>
             </View>
 
-            <View style={[styles.infoGrid, { marginTop: space.md }]}>
-              <View style={styles.infoCol}>
-                <Text style={[styles.label, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Monthly Rent</Text>
-                <Text style={[styles.value, { color: colors.primary, fontSize: font.h3.fontSize }]}>
-                  {maskAmount(unit.rent)}
-                </Text>
-              </View>
-              <View style={styles.infoCol}>
-                <Text style={[styles.label, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Deposit</Text>
-                <Text style={[styles.value, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
-                  {maskAmount(unit.deposit)}
-                </Text>
-              </View>
+            <View style={{ marginTop: space.sm, paddingVertical: space.xs }}>
+              <Text style={[styles.label, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>Rent Structure</Text>
+              <Text style={{ color: colors.text, fontSize: font.body.fontSize, fontWeight: '500', marginTop: 2 }}>
+                Custom Per-Tenant (Configured at Check-in)
+              </Text>
             </View>
 
             {unit.notes ? (

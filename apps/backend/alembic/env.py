@@ -5,6 +5,7 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 from app.core.config import settings
 from app.db.base import Base
+from app.features.agreements import models as agreement_models  # noqa: F401
 from app.features.audit import models as audit_models  # noqa: F401
 from app.features.auth import models as auth_models  # noqa: F401
 from app.features.consents import models as consent_models  # noqa: F401

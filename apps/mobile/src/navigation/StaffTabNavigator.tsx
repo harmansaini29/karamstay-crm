@@ -37,6 +37,7 @@ import { LegalVault } from '../features/settings/LegalVault';
 import { NotificationsView } from '../features/settings/NotificationsView';
 import { BroadcastNotice } from '../features/settings/BroadcastNotice';
 import { SettingsView } from '../features/settings/SettingsView';
+import { StaffProfileScreen } from '../features/settings/StaffProfileScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -105,6 +106,7 @@ const MoreStack = () => (
     <Stack.Screen name="BroadcastNotice" component={BroadcastNotice} />
     <Stack.Screen name="Settings" component={SettingsView} />
     <Stack.Screen name="StaffManagement" component={StaffManagementScreen} />
+    <Stack.Screen name="StaffProfile" component={StaffProfileScreen} />
   </Stack.Navigator>
 );
 
@@ -206,6 +208,9 @@ export const StaffTabNavigator: React.FC = () => {
       <Tab.Screen
         name="More"
         component={MoreStack}
+        options={{
+          popToTopOnBlur: true,
+        }}
         listeners={({ navigation }) => ({
           tabPress: () => {
             navigation.navigate('More', { screen: 'MoreHome' });

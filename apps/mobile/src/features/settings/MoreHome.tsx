@@ -69,24 +69,27 @@ export const MoreHome: React.FC<{ navigation: any }> = ({ navigation }) => {
       <ResponsiveContainer>
         <ScrollView contentContainerStyle={{ padding: horizontalGutter, paddingBottom: contentBottomPadding }}>
           {/* Profile Card */}
-          <Card style={[styles.profileCard, { borderColor: colors.border }]}>
-            <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '15' }]}>
-              <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: 24 }}>
-                {user?.name.slice(0, 2).toUpperCase() || 'ST'}
-              </Text>
-            </View>
-            <View style={{ flex: 1, marginLeft: space.md }}>
-              <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
-                {user?.name || 'Staff User'}
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 2 }}>
-                Role: {user?.role.name.toUpperCase()}
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
-                {user?.email || user?.phone}
-              </Text>
-            </View>
-          </Card>
+          <TouchableOpacity activeOpacity={0.8} onPress={() => navigation.navigate('StaffProfile')}>
+            <Card style={[styles.profileCard, { borderColor: colors.border }]}>
+              <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '15' }]}>
+                <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: 24 }}>
+                  {user?.name.slice(0, 2).toUpperCase() || 'ST'}
+                </Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: space.md }}>
+                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
+                  {user?.name || 'Staff User'}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 2 }}>
+                  Role: {user?.role.name.toUpperCase()}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
+                  {user?.email || user?.phone}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </Card>
+          </TouchableOpacity>
 
           {/* Menu Items */}
           <Text style={[styles.sectionTitle, { color: colors.text, fontSize: font.bodyStrong.fontSize, marginBottom: space.sm }]}>

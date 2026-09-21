@@ -107,6 +107,9 @@ export const ManagerTabNavigator: React.FC = () => {
       <Tab.Screen
         name="Profile"
         component={ProfileStack}
+        options={{
+          popToTopOnBlur: true,
+        }}
         listeners={({ navigation }) => ({
           tabPress: () => {
             navigation.navigate('Profile', { screen: 'ProfileHome' });

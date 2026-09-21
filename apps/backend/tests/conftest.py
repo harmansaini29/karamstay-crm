@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
 from app.db.session import SessionLocal, get_db
+from app.features.agreements import models as agreement_models  # noqa: F401
 from app.features.audit import models as audit_models  # noqa: F401
 from app.features.auth import models as auth_models  # noqa: F401
 from app.features.consents import models as consent_models  # noqa: F401

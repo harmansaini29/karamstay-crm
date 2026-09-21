@@ -140,15 +140,8 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
       newErrors.unitType = 'Unit type is required (2-20 chars)';
     }
 
-    const rentNum = parseFloat(rent);
-    if (isNaN(rentNum) || rentNum < 0) {
-      newErrors.rent = 'Rent must be a valid positive number';
-    }
-
-    const depositNum = parseFloat(deposit);
-    if (isNaN(depositNum) || depositNum < 0) {
-      newErrors.deposit = 'Deposit must be a valid positive number';
-    }
+    const rentNum = parseFloat(rent) || 0;
+    const depositNum = parseFloat(deposit) || 0;
 
     const mbNum = parseInt(masterBedCapacity, 10);
     const cbNum = parseInt(commonBedCapacity, 10);
@@ -255,26 +248,6 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
           />
         </View>
 
-        <View style={styles.row}>
-          <Input
-            label="Monthly Rent"
-            value={rent}
-            onChangeText={setRent}
-            placeholder="INR"
-            keyboardType="decimal-pad"
-            style={{ width: '48%' }}
-            error={errors.rent}
-          />
-          <Input
-            label="Security Deposit"
-            value={deposit}
-            onChangeText={setDeposit}
-            placeholder="INR"
-            keyboardType="decimal-pad"
-            style={{ width: '48%' }}
-            error={errors.deposit}
-          />
-        </View>
 
         {/* Bed Block Capacity Row */}
         <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: 6, marginTop: 4, fontWeight: '600', letterSpacing: 0.5 }}>

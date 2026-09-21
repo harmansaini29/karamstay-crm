@@ -330,8 +330,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     setErrors({});
     setIsLoading(true);
     try {
-      await requestOtp(phone.trim());
-      navigation.navigate('Otp', { phone: phone.trim() });
+      const devOtp = await requestOtp(phone.trim());
+      navigation.navigate('Otp', { phone: phone.trim(), devOtp });
     } catch (err: any) {
       showToast(err.message || 'Request failed', 'error');
     } finally {

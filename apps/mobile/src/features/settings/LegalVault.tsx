@@ -21,6 +21,7 @@ import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States
 import { Ionicons } from '@expo/vector-icons';
 import { Badge } from '../../components/Badge';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import * as WebBrowser from 'expo-web-browser';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
@@ -174,19 +175,40 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
       const { upload_url, file_key } = presignRes.data;
 
       // 2. Put file to S3 using the presigned URL
-      const fileRes = await fetch(asset.uri);
-      const fileBlob = await fileRes.blob();
+      let uploadSuccess = false;
+      const contentType = asset.mimeType || 'application/octet-stream';
 
-      const putRes = await fetch(upload_url, {
-        method: 'PUT',
-        body: fileBlob,
-        headers: {
-          'Content-Type': asset.mimeType || 'application/octet-stream',
-        },
-      });
+      // Prefer native upload via expo-file-system if available
+      try {
+        if (FileSystem.uploadAsync) {
+          const fsRes = await FileSystem.uploadAsync(upload_url, asset.uri, {
+            httpMethod: 'PUT',
+            uploadType: (FileSystem as any).UploadType?.BINARY_CONTENT ?? (FileSystem as any).FileSystemUploadType?.BINARY_CONTENT,
+            headers: { 'Content-Type': contentType },
+          });
+          if (fsRes.status >= 200 && fsRes.status < 300) {
+            uploadSuccess = true;
+          }
+        }
+      } catch {
+        // Fallback to fetch
+      }
 
-      if (!putRes.ok) {
-        throw new Error('Failed to upload file bytes directly to S3');
+      if (!uploadSuccess) {
+        const fileRes = await fetch(asset.uri);
+        const fileBlob = await fileRes.blob();
+
+        const putRes = await fetch(upload_url, {
+          method: 'PUT',
+          body: fileBlob,
+          headers: {
+            'Content-Type': contentType,
+          },
+        });
+
+        if (!putRes.ok) {
+          throw new Error(`Failed to upload file bytes to storage (${putRes.status})`);
+        }
       }
 
       // 3. Confirm upload with the backend metadata service

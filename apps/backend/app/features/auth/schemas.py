@@ -18,6 +18,7 @@ class OtpRequestRequest(BaseModel):
 
 class OtpRequestResponse(BaseModel):
     message: str = "If the phone number is registered, an OTP has been sent."
+    dev_otp: str | None = None
 
 
 class OtpVerifyRequest(BaseModel):
