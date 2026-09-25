@@ -302,7 +302,18 @@ class TenantService:
     def get_my_tenancy_context(self, current_user: User) -> dict:
         tenant = self.repository.get_tenant_by_user_id(current_user.id)
         if tenant is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant profile not found")
+            return {
+                "id": None,
+                "tenant_id": None,
+                "unit_id": None,
+                "start_date": None,
+                "monthly_rent": Decimal("0.00"),
+                "security_deposit": Decimal("0.00"),
+                "billing_day": 1,
+                "status": "pending_assignment",
+                "bed_ids": None,
+                "unit": None,
+            }
         tenancy = self.repository.get_active_tenancy_for_tenant(tenant.id)
         if tenancy is None:
             return {

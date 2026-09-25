@@ -155,7 +155,7 @@ class TenancyContextResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int | None = None
-    tenant_id: int
+    tenant_id: int | None = None
     unit_id: int | None = None
     start_date: date | None = None
     monthly_rent: Decimal = Decimal("0.00")
