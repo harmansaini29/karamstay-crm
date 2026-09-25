@@ -40,6 +40,24 @@ class PaymentService:
             return []
         return self.repository.list_invoices_for_tenant(tenant.id)
 
+    def get_invoice(self, invoice_id: int, current_user: User) -> Invoice:
+        invoice = self.repository.get_invoice(invoice_id)
+        if invoice is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+        role = current_user.role.name
+        if role in ("owner", "accountant"):
+            return invoice
+        if role == "manager":
+            if not self.repository.manager_has_tenancy(current_user.id, invoice.tenancy_id):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invoice access denied")
+            return invoice
+        if role == "tenant":
+            tenant = self.repository.get_tenant_by_user_id(current_user.id)
+            if tenant is None or (invoice.tenancy and invoice.tenancy.tenant_id != tenant.id):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invoice access denied")
+            return invoice
+        return invoice
+
     def create_invoice(self, payload: InvoiceCreate, current_user: User) -> Invoice:
         tenancy = self.repository.get_tenancy(payload.tenancy_id)
         if tenancy is None:

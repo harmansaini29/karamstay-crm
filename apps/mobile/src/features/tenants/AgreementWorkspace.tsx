@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   Modal,
   Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -51,6 +52,16 @@ interface Agreement {
   form_data: Record<string, string>;
   docx_file_name: string | null;
   docx_generated_at: string | null;
+  tenant_photo_key?: string | null;
+  aadhar_card_key?: string | null;
+  signature_key?: string | null;
+  tenant_photo_url?: string | null;
+  aadhar_card_url?: string | null;
+  signature_url?: string | null;
+  docx_download_url?: string | null;
+  pdf_download_url?: string | null;
+  s3_folder_path?: string | null;
+  s3_archive_url?: string | null;
   tracker_stage: 1 | 2 | 3 | 4;
   created_at: string;
 }
@@ -63,7 +74,11 @@ interface OfflineUpload {
   status: 'PENDING' | 'STAMPED' | 'NOTARIZED' | 'APPROVED';
   notes: string | null;
   uploaded_at: string;
+  s3_key?: string | null;
+  file_url?: string | null;
+  download_url?: string | null;
 }
+
 
 // ─── Tracker ─────────────────────────────────────────────────────────────────
 
@@ -134,7 +149,41 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
     enabled: !!agreement?.id,
   });
 
+  const { data: tenancies = [] } = useQuery<any[]>({
+    queryKey: ['tenancies', 'tenant', tenantId],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get(`/tenancies?tenant_id=${tenantId}`);
+        return Array.isArray(res.data) ? res.data : [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: !agreement,
+  });
+
   // ── Mutations ──────────────────────────────────────────────────────────────
+
+  const initAgreementMutation = useMutation({
+    mutationFn: async () => {
+      const activeTenancy = tenancies[0];
+      if (!activeTenancy) {
+        throw new Error('No active tenancy found for this tenant. Please check in the tenant first.');
+      }
+      const res = await apiClient.post('/agreements', {
+        tenant_id: tenantId,
+        tenancy_id: activeTenancy.id,
+        template_id: 'A',
+        template_name: 'Standard Lease Agreement',
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agreements', 'tenant', tenantId] });
+      Alert.alert('Success', 'Rental agreement initialized. Tenant can now fill and sign their contract.');
+    },
+    onError: (err: any) => Alert.alert('Initialization Failed', parseApiError(err).message),
+  });
 
   const compileMutation = useMutation({
     mutationFn: async (agId: number) => {
@@ -153,16 +202,19 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
       agId: number;
       upload_type: OfflineUpload['upload_type'];
       file_name: string;
+      file_base64?: string;
     }) => {
       const res = await apiClient.post(`/agreements/${payload.agId}/offline-upload`, {
         upload_type: payload.upload_type,
         file_name: payload.file_name,
+        file_base64: payload.file_base64,
       });
       return res.data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['agreement-uploads', agreement?.id] });
       qc.invalidateQueries({ queryKey: ['agreements', 'tenant', tenantId] });
+      Alert.alert('Success', 'Offline verification document uploaded successfully.');
     },
     onError: (err: any) => Alert.alert('Upload Error', parseApiError(err).message),
   });
@@ -185,17 +237,20 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
 
   const approveMutation = useMutation({
     mutationFn: async (agId: number) => {
-      const res = await apiClient.patch(`/agreements/${agId}`, {
-        tracker_stage: 4,
-        status: 'approved',
-      });
+      const res = await apiClient.post(`/agreements/${agId}/approve-and-archive`);
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['agreements', 'tenant', tenantId] });
-      Alert.alert('Approved', 'Agreement fully approved and archived to Legal Vault.');
+      qc.invalidateQueries({ queryKey: ['agreement-uploads', agreement?.id] });
+      qc.invalidateQueries({ queryKey: ['documents'] });
+      qc.invalidateQueries({ queryKey: ['my-documents'] });
+      Alert.alert(
+        'Agreement Approved & Archived',
+        `All files (Word agreement, PDF, tenant photo, Aadhaar, signature, offline docs) have been packaged and archived into AWS S3:\n\n${data?.s3_folder_path || ''}`
+      );
     },
-    onError: (err: any) => Alert.alert('Error', parseApiError(err).message),
+    onError: (err: any) => Alert.alert('Approval Error', parseApiError(err).message),
   });
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -219,10 +274,16 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
               mediaTypes: ImagePicker.MediaTypeOptions.Images,
               quality: 0.85,
               allowsEditing: true,
+              base64: true,
             });
             if (!result.canceled && result.assets?.length) {
               const fileName = result.assets[0].fileName ?? `${uploadType}_${Date.now()}.jpg`;
-              uploadMutation.mutate({ agId: agreement.id, upload_type: uploadType, file_name: fileName });
+              uploadMutation.mutate({
+                agId: agreement.id,
+                upload_type: uploadType,
+                file_name: fileName,
+                file_base64: result.assets[0].base64 || undefined,
+              });
             }
           } finally {
             isPickingRef.current = false;
@@ -234,13 +295,25 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
         text: 'Document / Gallery',
         onPress: async () => {
           try {
-            const result = await DocumentPicker.getDocumentAsync({
-              type: ['image/*', 'application/pdf'],
-              copyToCacheDirectory: true,
+            const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (!perm.granted) {
+              Alert.alert('Permission required', 'Gallery access is needed to select documents.');
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              quality: 0.85,
+              allowsEditing: true,
+              base64: true,
             });
             if (!result.canceled && result.assets?.length) {
-              const fileName = result.assets[0].name ?? `${uploadType}_${Date.now()}`;
-              uploadMutation.mutate({ agId: agreement.id, upload_type: uploadType, file_name: fileName });
+              const fileName = result.assets[0].fileName ?? `${uploadType}_${Date.now()}.jpg`;
+              uploadMutation.mutate({
+                agId: agreement.id,
+                upload_type: uploadType,
+                file_name: fileName,
+                file_base64: result.assets[0].base64 || undefined,
+              });
             }
           } catch (e: any) {
             Alert.alert('Error', e?.message || 'Could not open picker');
@@ -260,6 +333,7 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
       },
     ]);
   };
+
 
   // ── Render helpers ─────────────────────────────────────────────────────────
 
@@ -303,10 +377,83 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
     );
   };
 
+  const renderKycDocuments = () => {
+    const hasPhoto = !!agreement?.tenant_photo_url || !!agreement?.tenant_photo_key;
+    const hasAadhar = !!agreement?.aadhar_card_url || !!agreement?.aadhar_card_key;
+    const hasSign = !!agreement?.signature_url || !!agreement?.signature_key;
+
+    if (!hasPhoto && !hasAadhar && !hasSign) {
+      return (
+        <Card style={{ borderWidth: 1, marginBottom: space.md }}>
+          <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize, marginBottom: 8 }}>
+            Tenant Identity & KYC Documents
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
+            Tenant has not uploaded their photo, Aadhaar card, or signature yet.
+          </Text>
+        </Card>
+      );
+    }
+
+    return (
+      <Card style={{ borderWidth: 1, marginBottom: space.md }}>
+        <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize, marginBottom: 12 }}>
+          Tenant Identity & KYC Documents
+        </Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+          {/* Tenant Headshot */}
+          <View style={{ flex: 1, alignItems: 'center', padding: 8, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600', marginBottom: 6 }}>Photo</Text>
+            {agreement?.tenant_photo_url ? (
+              <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync(agreement.tenant_photo_url!)}>
+                <Image source={{ uri: agreement.tenant_photo_url }} style={{ width: 64, height: 64, borderRadius: 32, borderWidth: 1, borderColor: colors.border }} />
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primary + '15', justifyContent: 'center', alignItems: 'center' }}>
+                <Ionicons name="person" size={26} color={colors.primary} />
+              </View>
+            )}
+            <Text style={{ color: colors.text, fontSize: 10, marginTop: 4, textAlign: 'center' }}>Headshot</Text>
+          </View>
+
+          {/* Aadhaar Card */}
+          <View style={{ flex: 1, alignItems: 'center', padding: 8, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600', marginBottom: 6 }}>Aadhaar</Text>
+            {agreement?.aadhar_card_url ? (
+              <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync(agreement.aadhar_card_url!)}>
+                <Image source={{ uri: agreement.aadhar_card_url }} style={{ width: 80, height: 64, borderRadius: 6, borderWidth: 1, borderColor: colors.border }} />
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 80, height: 64, borderRadius: 6, backgroundColor: colors.primary + '15', justifyContent: 'center', alignItems: 'center' }}>
+                <Ionicons name="card" size={26} color={colors.primary} />
+              </View>
+            )}
+            <Text style={{ color: colors.text, fontSize: 10, marginTop: 4, textAlign: 'center' }}>National ID</Text>
+          </View>
+
+          {/* Signature */}
+          <View style={{ flex: 1, alignItems: 'center', padding: 8, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600', marginBottom: 6 }}>Signature</Text>
+            {agreement?.signature_url ? (
+              <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync(agreement.signature_url!)}>
+                <Image source={{ uri: agreement.signature_url }} style={{ width: 80, height: 64, borderRadius: 6, borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff', resizeMode: 'contain' }} />
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 80, height: 64, borderRadius: 6, backgroundColor: colors.primary + '15', justifyContent: 'center', alignItems: 'center' }}>
+                <Ionicons name="pencil" size={24} color={colors.primary} />
+              </View>
+            )}
+            <Text style={{ color: colors.text, fontSize: 10, marginTop: 4, textAlign: 'center' }}>Signature</Text>
+          </View>
+        </View>
+      </Card>
+    );
+  };
+
   const renderDocxSection = () => (
     <Card style={{ borderWidth: 1, marginBottom: space.md }}>
       <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize, marginBottom: 12 }}>
-        Agreement Document (.docx)
+        Rental Agreement Documents (.docx & .pdf)
       </Text>
       {agreement?.docx_file_name ? (
         <View>
@@ -321,13 +468,40 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
               </Text>
             </View>
           </View>
-          <Button
-            label="Download / View Document"
-            variant="secondary"
-            onPress={() =>
-              WebBrowser.openBrowserAsync('https://s3.mock-presigned-url.com/download/agreement.docx')
-            }
-          />
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Button
+                label="Word File (.docx)"
+                variant="secondary"
+                onPress={async () => {
+                  try {
+                    const downloadUrl =
+                      agreement.docx_download_url ||
+                      (await apiClient.get(`/agreements/${agreement.id}/download?doc_type=docx`)).data.download_url;
+                    if (downloadUrl) await WebBrowser.openBrowserAsync(downloadUrl);
+                  } catch (e: any) {
+                    Alert.alert('Download Error', parseApiError(e).message);
+                  }
+                }}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button
+                label="PDF Document"
+                variant="secondary"
+                onPress={async () => {
+                  try {
+                    const downloadUrl =
+                      agreement.pdf_download_url ||
+                      (await apiClient.get(`/agreements/${agreement.id}/download?doc_type=pdf`)).data.download_url;
+                    if (downloadUrl) await WebBrowser.openBrowserAsync(downloadUrl);
+                  } catch (e: any) {
+                    Alert.alert('Download Error', parseApiError(e).message);
+                  }
+                }}
+              />
+            </View>
+          </View>
         </View>
       ) : (
         <View>
@@ -335,7 +509,7 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
             The agreement document has not been compiled yet. Compile it from the tenant's submitted form data.
           </Text>
           <Button
-            label="Compile Agreement (.docx)"
+            label="Compile Agreement (.docx & .pdf)"
             loading={compileMutation.isPending}
             disabled={!agreement || agreement.tracker_stage < 1}
             onPress={() => agreement && compileMutation.mutate(agreement.id)}
@@ -380,6 +554,14 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
                   {UPLOAD_TYPES.find((t) => t.type === up.upload_type)?.label} · {new Date(up.uploaded_at).toLocaleDateString()}
                 </Text>
               </View>
+              {up.download_url || up.file_url ? (
+                <TouchableOpacity
+                  onPress={() => WebBrowser.openBrowserAsync((up.download_url || up.file_url)!)}
+                  style={{ padding: 6, marginRight: 6 }}
+                >
+                  <Ionicons name="eye-outline" size={18} color={colors.primary} />
+                </TouchableOpacity>
+              ) : null}
               <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: (UPLOAD_STATUS_COLORS[up.status] || '#888') + '20' }}>
                 <Text style={{ color: UPLOAD_STATUS_COLORS[up.status] || '#888', fontWeight: '700', fontSize: 11 }}>
                   {up.status}
@@ -392,6 +574,7 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
     </Card>
   );
 
+
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
@@ -402,8 +585,19 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
             <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Back</Text>
           </TouchableOpacity>
           <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>Legal Workspace</Text>
-          <View style={{ width: 50 }} />
+          <TouchableOpacity
+            onPress={() => {
+              const baseUrl = apiClient.defaults.baseURL?.replace(/\/api\/v1\/?$/, '') || 'http://localhost:8000';
+              WebBrowser.openBrowserAsync(`${baseUrl}/api/v1/vault/portal`);
+            }}
+            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '15', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
+            accessibilityLabel="Open AWS S3 Confidential Vault"
+          >
+            <Ionicons name="shield-checkmark" size={16} color={colors.primary} style={{ marginRight: 4 }} />
+            <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>Vault</Text>
+          </TouchableOpacity>
         </View>
+
 
         <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}>
           {/* Tenant name banner */}
@@ -419,30 +613,39 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
 
           {!agreement ? (
             <Card style={{ borderWidth: 1, padding: space.xl, alignItems: 'center' }}>
-              <Ionicons name="document-attach-outline" size={48} color={colors.textMuted} style={{ marginBottom: 12 }} />
-              <Text style={{ color: colors.textMuted, fontSize: font.body.fontSize, textAlign: 'center' }}>
-                No agreement has been initiated for this tenant yet. Create a tenancy first, then assign an agreement template from Check-In.
+              <Ionicons name="document-attach-outline" size={48} color={colors.primary} style={{ marginBottom: 12 }} />
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.h3.fontSize, textAlign: 'center', marginBottom: 6 }}>
+                Rental Agreement Not Initialized
               </Text>
+              <Text style={{ color: colors.textMuted, fontSize: font.body.fontSize, textAlign: 'center', marginBottom: 16 }}>
+                Initialize the standard lease agreement so this tenant can review, fill their KYC details, and sign the contract.
+              </Text>
+              <Button
+                label="Initialize Rental Agreement"
+                loading={initAgreementMutation.isPending}
+                onPress={() => initAgreementMutation.mutate()}
+              />
             </Card>
           ) : (
             <>
               {renderTracker()}
+              {renderKycDocuments()}
               {renderFormData()}
               {renderDocxSection()}
               {renderOfflineUploads()}
 
-              {/* Final Approval */}
-              {agreement.tracker_stage >= 3 && agreement.status !== 'approved' && (
+              {/* Final Approval & AWS S3 Vault Archiving */}
+              {agreement.tracker_stage >= 2 && agreement.status !== 'approved' && (
                 <Button
-                  label="Grant Final Approval & Archive"
+                  label="Approve & Upload to AWS S3 Vault"
                   loading={approveMutation.isPending}
                   onPress={() => {
                     Alert.alert(
                       'Confirm Final Approval',
-                      'This will mark the agreement as fully verified and archive it to the Legal Vault. This cannot be undone.',
+                      'This will package the Word agreement, PDF, tenant photo, Aadhaar card, signature, and all offline verification stamps into AWS S3 storage under the tenant unit directory and publish them into the tenant Legal Vault. This cannot be undone.',
                       [
                         { text: 'Cancel', style: 'cancel' },
-                        { text: 'Approve', onPress: () => approveMutation.mutate(agreement.id) },
+                        { text: 'Approve & Archive', onPress: () => approveMutation.mutate(agreement.id) },
                       ]
                     );
                   }}
@@ -455,8 +658,14 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
                   <Text style={{ color: semanticColor.success.fg, fontWeight: '700', marginTop: 6, fontSize: font.bodyStrong.fontSize }}>
                     Agreement Fully Approved & Archived
                   </Text>
+                  {agreement.s3_folder_path ? (
+                    <Text style={{ color: semanticColor.success.fg, fontSize: 11, marginTop: 4, textAlign: 'center' }}>
+                      AWS S3 Location: {agreement.s3_folder_path}
+                    </Text>
+                  ) : null}
                 </View>
               )}
+
             </>
           )}
         </ScrollView>

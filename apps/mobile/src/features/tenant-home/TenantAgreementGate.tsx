@@ -65,7 +65,9 @@ export const TenantAgreementGate: React.FC<{ navigation: any }> = ({ navigation 
   useEffect(() => {
     if (isLoading) return;
 
-    const pending = agreements.find((a) => !a.tracker_stage || a.tracker_stage < 1);
+    const pending = agreements.find(
+      (a) => !a.tracker_stage || (a.tracker_stage <= 1 && a.status !== 'docx_generated' && a.status !== 'approved')
+    );
 
     if (pending) {
       navigation.replace('TenantAgreementFormScreen', { agreementId: pending.id });

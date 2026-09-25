@@ -2,12 +2,42 @@ from sqlalchemy.orm import Session
 
 from app.core.notify.dispatch import send_with_retry
 from app.core.notify.fcm import send_push
+from app.core.notify.sms import send_sms
 from app.core.notify.whatsapp import send_template_message
 from app.core.security import utc_now
 from app.features.notifications.models import Notification
 from app.features.notifications.repository import NotificationRepository
 
 _STATUS_MAP = {"sent": "sent", "skipped": "skipped"}
+
+
+def notify_sms(
+    db: Session,
+    *,
+    user_id: int | None,
+    phone: str,
+    notification_type: str,
+    title: str,
+    message: str,
+) -> Notification:
+    repository = NotificationRepository(db)
+    notification = Notification(
+        user_id=user_id,
+        channel="sms",
+        notification_type=notification_type,
+        title=title,
+        message=message,
+        status="pending",
+    )
+    repository.add_notification(notification)
+    db.flush()
+
+    result = send_with_retry(send_sms, to=phone, message=f"{title}: {message}")
+    notification.status = _STATUS_MAP.get(result.get("status"), "failed")
+    if notification.status == "sent":
+        notification.sent_at = utc_now()
+    db.commit()
+    return notification
 
 
 def notify_whatsapp(

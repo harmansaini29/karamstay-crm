@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLogService
 from app.core.security import utc_now
+from app.features.agreements.models import Agreement
 from app.features.auth.models import Role, User
 from app.features.notifications.models import Notification
 from app.features.payments.models import LedgerEntry
@@ -234,6 +235,24 @@ class TenantService:
         unit.status = "occupied"
         unit.updated_by_id = current_user.id
 
+        # Auto-initialize legal rental agreement for this tenancy so room allocation
+        # and agreement track sync immediately
+        existing_ag = self.db.scalar(
+            select(Agreement).where(Agreement.tenancy_id == tenancy.id, Agreement.deleted_at.is_(None))
+        )
+        if existing_ag is None:
+            new_agreement = Agreement(
+                tenancy_id=tenancy.id,
+                tenant_id=tenant.id,
+                template_id="A",
+                template_name="Standard Agreement",
+                status="form_submitted",
+                tracker_stage=1,
+                created_by_id=current_user.id,
+                updated_by_id=current_user.id,
+            )
+            self.db.add(new_agreement)
+
         self.audit.record(
             user_id=current_user.id,
             action="tenancy.check_in",
@@ -286,7 +305,18 @@ class TenantService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant profile not found")
         tenancy = self.repository.get_active_tenancy_for_tenant(tenant.id)
         if tenancy is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active tenancy found")
+            return {
+                "id": None,
+                "tenant_id": tenant.id,
+                "unit_id": None,
+                "start_date": None,
+                "monthly_rent": Decimal("0.00"),
+                "security_deposit": Decimal("0.00"),
+                "billing_day": 1,
+                "status": "pending_assignment",
+                "bed_ids": None,
+                "unit": None,
+            }
         unit = self.property_repository.get_unit(tenancy.unit_id)
         unit_ctx = None
         if unit is not None:
@@ -298,6 +328,7 @@ class TenantService:
                 "floor": unit.floor,
                 "property_id": unit.property_id,
                 "property_name": property_.name if property_ is not None else "",
+                "payment_upi_id": property_.payment_upi_id if property_ is not None else None,
             }
         return {
             "id": tenancy.id,
@@ -412,7 +443,9 @@ class TenantService:
         if tenant is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
         if current_user.role.name not in ("owner", "manager"):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owner or manager can delete tenant")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Only owner or manager can delete tenant"
+            )
 
         active_tenancies = list(self.db.scalars(
             select(Tenancy).where(

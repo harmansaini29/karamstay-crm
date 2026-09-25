@@ -11,7 +11,7 @@
  *   • Sensitive fields are not stored in component state beyond form lifecycle.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,9 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
@@ -111,6 +113,9 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [maskedFields, setMaskedFields] = useState<Record<string, boolean>>({});
   const [submitted, setSubmitted] = useState(false);
+  const [tenantPhoto, setTenantPhoto] = useState<{ uri: string; base64: string } | null>(null);
+  const [aadharCard, setAadharCard] = useState<{ uri: string; base64: string } | null>(null);
+  const [signature, setSignature] = useState<{ uri: string; base64: string } | null>(null);
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -126,17 +131,85 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
       const res = await apiClient.get(`/agreements/${agreementId}`);
       return res.data;
     },
-    onSuccess: (data: any) => {
-      // Pre-fill if the tenant has already partially submitted
-      if (data?.form_data && Object.keys(data.form_data).length > 0) {
-        setFormValues(data.form_data);
-        setSubmitted(data.tracker_stage >= 1);
-      }
-    },
-  } as any);
+  });
+
+  useEffect(() => {
+    if (agreement?.form_data && Object.keys(agreement.form_data).length > 0) {
+      setFormValues(agreement.form_data);
+    }
+    if (agreement?.tracker_stage >= 2 || agreement?.status === 'docx_generated' || agreement?.status === 'approved') {
+      setSubmitted(true);
+    }
+  }, [agreement]);
 
   const templateId: 'A' | 'B' | 'C' = agreement?.template_id ?? 'A';
   const fields = TEMPLATE_FIELDS[templateId] ?? TEMPLATE_FIELDS['A'];
+
+  // ── Handlers for KYC Uploads ──────────────────────────────────────────────
+
+  const pickPhoto = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission Denied', 'Gallery access is required to upload photo.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: true,
+      });
+      if (!result.canceled && result.assets?.[0]?.base64) {
+        setTenantPhoto({ uri: result.assets[0].uri, base64: result.assets[0].base64 });
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Could not pick photo');
+    }
+  };
+
+  const pickAadhar = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission Denied', 'Gallery access is required to upload Aadhaar card.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.85,
+        base64: true,
+      });
+      if (!result.canceled && result.assets?.[0]?.base64) {
+        setAadharCard({ uri: result.assets[0].uri, base64: result.assets[0].base64 });
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Could not pick Aadhaar document');
+    }
+  };
+
+  const pickSignature = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission Denied', 'Gallery access is required to upload signature.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.85,
+        base64: true,
+      });
+      if (!result.canceled && result.assets?.[0]?.base64) {
+        setSignature({ uri: result.assets[0].uri, base64: result.assets[0].base64 });
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Could not pick signature');
+    }
+  };
 
   // ── Validation ─────────────────────────────────────────────────────────────
 
@@ -146,10 +219,27 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
         return `${field.label} is required.`;
       }
     }
+    if (!tenantPhoto && !agreement?.tenant_photo_key) {
+      return 'Please upload your passport-size photo or headshot.';
+    }
+    if (!aadharCard && !agreement?.aadhar_card_key) {
+      return 'Please upload your Aadhaar Card or National ID proof.';
+    }
+    if (!signature && !agreement?.signature_key) {
+      return 'Please upload your signature.';
+    }
     return null;
   };
 
   // ── Mutations ──────────────────────────────────────────────────────────────
+
+  const handleGoBack = () => {
+    if (navigation?.canGoBack && navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation?.navigate?.('TenantDashboard');
+    }
+  };
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -162,30 +252,31 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
           safeFormData[k] = v;
         }
       }
-      // Save form data
-      await apiClient.patch(`/agreements/${agreementId}`, {
+      // Call submit-kyc endpoint: uploads KYC docs, compiles docx & pdf, updates stage, and notifies staff
+      const res = await apiClient.post(`/agreements/${agreementId}/submit-kyc`, {
         form_data: safeFormData,
-        tracker_stage: 1,
-        status: 'form_submitted',
+        tenant_photo_base64: tenantPhoto?.base64,
+        aadhar_card_base64: aadharCard?.base64,
+        signature_base64: signature?.base64,
       });
-      // Auto-compile docx after submission
-      const compileRes = await apiClient.post(`/agreements/${agreementId}/compile-docx`);
-      return compileRes.data;
+      return res.data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['agreement', agreementId] });
-      qc.invalidateQueries({ queryKey: ['agreements', 'me'] });
+      qc.invalidateQueries({ queryKey: ['agreements'] });
+      qc.invalidateQueries({ queryKey: ['my-agreements'] });
       setSubmitted(true);
       Alert.alert(
         'Submitted Successfully',
-        'Your agreement details have been submitted and the document is being prepared for review.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
+        'Your agreement details, photograph, Aadhaar card, and signature have been submitted to your property owner for verification.',
+        [{ text: 'OK', onPress: handleGoBack }]
       );
     },
     onError: (err: any) => {
       Alert.alert('Submission Failed', parseApiError(err).message);
     },
   });
+
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -210,7 +301,7 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
             <View style={{ width: '100%', marginTop: 40 }}>
               <AgreementTrackerCard stage={agreement.tracker_stage} />
             </View>
-            <Button label="Back to Home" onPress={() => navigation.goBack()} style={{ marginTop: 32, width: '100%' }} />
+            <Button label="Back to Home" onPress={handleGoBack} style={{ marginTop: 32, width: '100%' }} />
           </ScrollView>
         </ResponsiveContainer>
       </SafeAreaView>
@@ -223,7 +314,7 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
+            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={handleGoBack}>
               <Ionicons name="arrow-back" size={20} color={colors.primary} />
               <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Back</Text>
             </TouchableOpacity>
@@ -291,9 +382,130 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
               );
             })}
 
+            {/* Identity & KYC Verification Uploads */}
+            <Card style={{ borderWidth: 1, borderColor: colors.border, padding: space.md, marginBottom: space.lg, marginTop: space.sm }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <Ionicons name="shield-checkmark" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.bodyStrong.fontSize }}>
+                  KYC & Identity Verification
+                </Text>
+              </View>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 16 }}>
+                Government regulations require a headshot photo, Aadhaar card photocopy, and signature before rental agreement execution.
+              </Text>
+
+              {/* 1. Tenant Headshot / Photocopy */}
+              <View style={{ marginBottom: 16, padding: 12, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>
+                    1. Tenant Photo / Headshot <Text style={{ color: semanticColor.error.solid }}>*</Text>
+                  </Text>
+                  <TouchableOpacity onPress={pickPhoto} style={{ backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}>
+                    <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 11 }}>
+                      {tenantPhoto || agreement?.tenant_photo_url ? 'Change Photo' : 'Upload Photo'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {tenantPhoto?.uri ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <Image source={{ uri: tenantPhoto.uri }} style={{ width: 60, height: 60, borderRadius: 30, marginRight: 12, borderWidth: 1, borderColor: colors.border }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: semanticColor.success.solid, fontWeight: 'bold', fontSize: 12 }}>Photo Selected</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Ready for submission</Text>
+                    </View>
+                  </View>
+                ) : agreement?.tenant_photo_url ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <Image source={{ uri: agreement.tenant_photo_url }} style={{ width: 60, height: 60, borderRadius: 30, marginRight: 12, borderWidth: 1, borderColor: colors.border }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 12 }}>Photo on File</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Tap Change Photo to update</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity onPress={pickPhoto} style={{ height: 60, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.border, borderRadius: 8, justifyContent: 'center', alignItems: 'center', flexDirection: 'row' }}>
+                    <Ionicons name="camera-outline" size={20} color={colors.textMuted} style={{ marginRight: 8 }} />
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>Tap to choose photo or headshot</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* 2. Aadhaar Card / ID Proof */}
+              <View style={{ marginBottom: 16, padding: 12, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>
+                    2. Aadhaar Card / National ID <Text style={{ color: semanticColor.error.solid }}>*</Text>
+                  </Text>
+                  <TouchableOpacity onPress={pickAadhar} style={{ backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}>
+                    <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 11 }}>
+                      {aadharCard || agreement?.aadhar_card_url ? 'Change ID' : 'Upload ID'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {aadharCard?.uri ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <Image source={{ uri: aadharCard.uri }} style={{ width: 80, height: 50, borderRadius: 6, marginRight: 12, borderWidth: 1, borderColor: colors.border }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: semanticColor.success.solid, fontWeight: 'bold', fontSize: 12 }}>Aadhaar Selected</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Ready for submission</Text>
+                    </View>
+                  </View>
+                ) : agreement?.aadhar_card_url ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <Image source={{ uri: agreement.aadhar_card_url }} style={{ width: 80, height: 50, borderRadius: 6, marginRight: 12, borderWidth: 1, borderColor: colors.border }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 12 }}>Aadhaar on File</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Tap Change ID to update</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity onPress={pickAadhar} style={{ height: 60, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.border, borderRadius: 8, justifyContent: 'center', alignItems: 'center', flexDirection: 'row' }}>
+                    <Ionicons name="card-outline" size={20} color={colors.textMuted} style={{ marginRight: 8 }} />
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>Tap to upload Aadhaar card photocopy</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* 3. Signature */}
+              <View style={{ padding: 12, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>
+                    3. Tenant Signature <Text style={{ color: semanticColor.error.solid }}>*</Text>
+                  </Text>
+                  <TouchableOpacity onPress={pickSignature} style={{ backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}>
+                    <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 11 }}>
+                      {signature || agreement?.signature_url ? 'Change Signature' : 'Upload Signature'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {signature?.uri ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <Image source={{ uri: signature.uri }} style={{ width: 80, height: 40, borderRadius: 4, marginRight: 12, borderWidth: 1, borderColor: colors.border, resizeMode: 'contain', backgroundColor: '#fff' }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: semanticColor.success.solid, fontWeight: 'bold', fontSize: 12 }}>Signature Selected</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Ready for document embedding</Text>
+                    </View>
+                  </View>
+                ) : agreement?.signature_url ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <Image source={{ uri: agreement.signature_url }} style={{ width: 80, height: 40, borderRadius: 4, marginRight: 12, borderWidth: 1, borderColor: colors.border, resizeMode: 'contain', backgroundColor: '#fff' }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 12 }}>Signature on File</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Tap Change Signature to update</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity onPress={pickSignature} style={{ height: 60, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.border, borderRadius: 8, justifyContent: 'center', alignItems: 'center', flexDirection: 'row' }}>
+                    <Ionicons name="pencil-outline" size={20} color={colors.textMuted} style={{ marginRight: 8 }} />
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>Tap to upload your signature image</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </Card>
+
             {/* Submit */}
             <Button
-              label="Submit Agreement"
+              label="Submit Agreement & KYC"
               loading={submitMutation.isPending}
               disabled={submitMutation.isPending}
               onPress={() => {

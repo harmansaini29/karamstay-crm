@@ -50,9 +50,22 @@ export const TenantHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
     },
   });
 
+  // 4. Fetch tenant agreements (to display real-time legal docs track)
+  const { data: agreements = [], refetch: refetchAgreements } = useQuery<any[]>({
+    queryKey: ['my-agreements'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/agreements');
+        return Array.isArray(res.data) ? res.data : [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetchContext(), refetchInvoices(), refetchNotices()]);
+    await Promise.all([refetchContext(), refetchInvoices(), refetchNotices(), refetchAgreements()]);
     setRefreshing(false);
   };
 
@@ -158,6 +171,100 @@ export const TenantHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
             </Text>
           </Card>
         )}
+
+        {/* Legal Documents & Rental Agreement Track Card */}
+        {(() => {
+          const agreement = agreements[0];
+          const stage = agreement?.tracker_stage ?? 0;
+
+          const isKycSubmitted = stage >= 2 || agreement?.status === 'docx_generated' || agreement?.status === 'approved';
+          const stageTitles = [
+            'Fill & Sign Agreement Pending',
+            'Fill & Sign Agreement Pending',
+            'Word Agreement Synced with Owner/Staff',
+            'Offline Stamp & Notary Verification',
+            'Agreement Approved & Archived in S3 Vault',
+          ];
+
+          const currentTitle = stageTitles[stage] || 'Rental Agreement Process';
+
+          return (
+            <Card style={[styles.legalCard, { borderColor: colors.border, marginBottom: space.md }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <Ionicons name="document-text-outline" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+                  <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.bodyStrong.fontSize }}>
+                    Legal Documents & Agreement Track
+                  </Text>
+                </View>
+                <Badge status={stage >= 4 ? 'vacant' : isKycSubmitted ? 'pending' : 'occupied'} />
+              </View>
+
+              <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: 12 }}>
+                Current Stage: <Text style={{ color: colors.text, fontWeight: '700' }}>{currentTitle}</Text>
+              </Text>
+
+              {/* Progress 4-step indicator */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                {[1, 2, 3, 4].map((step) => {
+                  const done = stage >= step && (step === 1 ? isKycSubmitted : true);
+                  return (
+                    <View key={step} style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                      <View
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: 11,
+                          backgroundColor: done ? semanticColor.success.solid : colors.border,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {done ? (
+                          <Ionicons name="checkmark" size={12} color="#fff" />
+                        ) : (
+                          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700' }}>{step}</Text>
+                        )}
+                      </View>
+                      {step < 4 && (
+                        <View
+                          style={{
+                            flex: 1,
+                            height: 2,
+                            backgroundColor: stage > step ? semanticColor.success.solid : colors.border,
+                            marginHorizontal: 4,
+                          }}
+                        />
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ color: colors.textMuted, fontSize: 11, flex: 1, marginRight: 8 }}>
+                  {stage >= 4
+                    ? 'All documents (Aadhaar, photo, agreement) are safely archived in AWS S3 vault.'
+                    : isKycSubmitted
+                    ? 'Word document created and synced with owner on spot.'
+                    : 'Submit your KYC (Aadhaar, photo, sign) to generate legal agreement.'}
+                </Text>
+                <Button
+                  label={stage >= 4 ? 'View Vault' : isKycSubmitted ? 'Track Status' : 'Fill & Sign'}
+                  variant={isKycSubmitted ? 'secondary' : 'primary'}
+                  size="compact"
+                  onPress={() => {
+                    if (!isKycSubmitted && agreement?.id) {
+                      navigation.navigate('TenantAgreementFormScreen', { agreementId: agreement.id });
+                    } else {
+                      navigation.navigate('Documents');
+                    }
+                  }}
+                />
+              </View>
+            </Card>
+          );
+        })()}
 
         {/* Rent Due Card */}
         {activeDueInvoice ? (
@@ -277,5 +384,9 @@ const styles = StyleSheet.create({
   },
   rentMetaCol: {
     flex: 1,
+  },
+  legalCard: {
+    borderWidth: 1,
+    padding: 14,
   },
 });

@@ -21,7 +21,7 @@ export const TenantPaymentsScreen: React.FC<{ navigation: any }> = ({ navigation
   const { user } = useAuth();
   const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState<FinanceTab>('invoices');
-  
+
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentStep, setPaymentStep] = useState('');
 
@@ -117,11 +117,29 @@ export const TenantPaymentsScreen: React.FC<{ navigation: any }> = ({ navigation
     setUpiModalVisible(true);
   };
 
+  const resolvePaymentUpiId = () => {
+    return (
+      selectedInvoice?.payment_upi_id ||
+      tenancyContext?.unit?.payment_upi_id ||
+      settings.owner_upi_vpa ||
+      'karamstay@okhdfcbank'
+    );
+  };
+
+  const resolvePayeeName = () => {
+    return (
+      selectedInvoice?.property_name ||
+      tenancyContext?.unit?.property_name ||
+      settings.payee_name ||
+      'KaramStay Residence'
+    );
+  };
+
   const handleLaunchUpi = async (app: 'gpay' | 'phonepe' | 'paytm' | 'generic') => {
     if (!selectedInvoice) return;
 
-    const pa = settings.owner_upi_vpa || 'karamstay@okhdfcbank';
-    const pn = settings.payee_name || 'Karam Singh';
+    const pa = resolvePaymentUpiId();
+    const pn = resolvePayeeName();
     const am = selectedInvoice.amount;
     const tn = encodeURIComponent(`Rent payment Inv #${selectedInvoice.id}`);
 
@@ -291,214 +309,215 @@ export const TenantPaymentsScreen: React.FC<{ navigation: any }> = ({ navigation
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.subtitle, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>
-          STATEMENT LOGS
-        </Text>
-        <Text style={[styles.titleText, { color: colors.text, fontSize: font.h1.fontSize }]}>
-          Payments
-        </Text>
-      </View>
-
-      {/* Processing indicator */}
-      {isProcessingPayment ? (
-        <Card style={[styles.processingCard, { borderColor: colors.primary }]}>
-          <ActivityIndicator color={colors.primary} style={{ marginRight: space.sm }} />
-          <Text style={{ color: colors.text, fontWeight: 'bold' }}>{paymentStep}</Text>
-        </Card>
-      ) : null}
-
-      {/* Tabs */}
-      <View style={[styles.segmentedContainer, { borderColor: colors.border }]}>
-        {(['invoices', 'payments', 'ledger'] as FinanceTab[]).map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            onPress={() => setActiveTab(tab)}
-            style={[
-              styles.segmentButton,
-              {
-                backgroundColor: activeTab === tab ? colors.primary : 'transparent',
-              },
-            ]}
-          >
-            <Text
-              style={{
-                color: activeTab === tab ? '#FFFFFF' : colors.textMuted,
-                fontWeight: '600',
-                fontSize: 12,
-                textTransform: 'capitalize',
-              }}
-            >
-              {tab}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Tab content */}
-      <View style={{ flex: 1 }}>
-        {activeTab === 'invoices' ? (
-          <FlatList
-            data={invoices}
-            keyExtractor={(item) => String(item.id)}
-            renderItem={renderInvoiceItem}
-            contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
-            ListEmptyComponent={<EmptyState title="No Invoices Sighted" body="Rent invoices generated will list here." />}
-            refreshing={isInvoicesLoading}
-            onRefresh={onRefresh}
-          />
-        ) : null}
-
-        {activeTab === 'payments' ? (
-          <FlatList
-            data={payments}
-            keyExtractor={(item) => String(item.id)}
-            renderItem={renderPaymentItem}
-            contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
-            ListEmptyComponent={<EmptyState title="No Payments Recorded" body="Your processed transaction receipts will list here." />}
-            refreshing={isPaymentsLoading}
-            onRefresh={onRefresh}
-          />
-        ) : null}
-
-        {activeTab === 'ledger' ? (
-          <FlatList
-            data={ledgerWithBalance}
-            keyExtractor={(item) => String(item.id)}
-            renderItem={renderLedgerItem}
-            contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
-            ListEmptyComponent={<EmptyState title="Ledger Log Empty" body="Chronological statements ledger will list here." />}
-            refreshing={isLedgerLoading}
-            onRefresh={onRefresh}
-          />
-        ) : null}
-      </View>
-
-      {/* UPI App Selection Modal */}
-      <Modal
-        visible={upiModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setUpiModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <Card style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={styles.modalHeader}>
-              <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
-                Pay with UPI
-              </Text>
-              <TouchableOpacity onPress={() => setUpiModalVisible(false)}>
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: space.md }}>
-              Payee: {settings.payee_name || 'Karam Singh'} ({settings.owner_upi_vpa || 'karamstay@okhdfcbank'}){"\n"}
-              Amount: {selectedInvoice ? formatCurrency(selectedInvoice.amount) : ''}
-            </Text>
-
-            <TouchableOpacity
-              style={[styles.upiButton, { borderColor: colors.border }]}
-              onPress={() => handleLaunchUpi('gpay')}
-            >
-              <Ionicons name="logo-google" size={20} color="#EA4335" style={{ marginRight: space.sm }} />
-              <Text style={{ color: colors.text, fontWeight: '600' }}>Google Pay</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.upiButton, { borderColor: colors.border }]}
-              onPress={() => handleLaunchUpi('phonepe')}
-            >
-              <Ionicons name="phone-portrait-outline" size={20} color="#5F259F" style={{ marginRight: space.sm }} />
-              <Text style={{ color: colors.text, fontWeight: '600' }}>PhonePe</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.upiButton, { borderColor: colors.border }]}
-              onPress={() => handleLaunchUpi('paytm')}
-            >
-              <Ionicons name="wallet-outline" size={20} color="#00B9F5" style={{ marginRight: space.sm }} />
-              <Text style={{ color: colors.text, fontWeight: '600' }}>Paytm</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.upiButton, { borderColor: colors.border }]}
-              onPress={() => handleLaunchUpi('generic')}
-            >
-              <Ionicons name="apps-outline" size={20} color={colors.primary} style={{ marginRight: space.sm }} />
-              <Text style={{ color: colors.text, fontWeight: '600' }}>Other UPI App</Text>
-            </TouchableOpacity>
-
-            <Button
-              label="Enter UTR Manually"
-              onPress={() => {
-                setUpiModalVisible(false);
-                setUtrModalVisible(true);
-              }}
-              variant="secondary"
-              style={{ marginTop: space.sm }}
-            />
-          </Card>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={[styles.subtitle, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>
+            STATEMENT LOGS
+          </Text>
+          <Text style={[styles.titleText, { color: colors.text, fontSize: font.h1.fontSize }]}>
+            Payments
+          </Text>
         </View>
-      </Modal>
 
-      {/* UTR Verification Input Modal */}
-      <Modal
-        visible={utrModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setUtrModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <Card style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize, marginBottom: space.xs }}>
-              Submit UTR Reference
-            </Text>
-            <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: space.md }}>
-              Please copy the 12-digit UTR/Ref number from your payment app receipt and paste it below.
-            </Text>
+        {/* Processing indicator */}
+        {isProcessingPayment ? (
+          <Card style={[styles.processingCard, { borderColor: colors.primary }]}>
+            <ActivityIndicator color={colors.primary} style={{ marginRight: space.sm }} />
+            <Text style={{ color: colors.text, fontWeight: 'bold' }}>{paymentStep}</Text>
+          </Card>
+        ) : null}
 
-            <TextInput
+        {/* Tabs */}
+        <View style={[styles.segmentedContainer, { borderColor: colors.border }]}>
+          {(['invoices', 'payments', 'ledger'] as FinanceTab[]).map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              onPress={() => setActiveTab(tab)}
               style={[
-                styles.utrInput,
-                { color: colors.text, borderColor: utrError ? semanticColor.error.solid : colors.border },
+                styles.segmentButton,
+                {
+                  backgroundColor: activeTab === tab ? colors.primary : 'transparent',
+                },
               ]}
-              placeholder="12-digit UTR code"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              maxLength={12}
-              value={utrCode}
-              onChangeText={(text) => {
-                setUtrCode(text.replace(/\D/g, ''));
-                setUtrError('');
-              }}
-            />
-
-            {utrError ? (
-              <Text style={{ color: semanticColor.error.solid, fontSize: 12, marginBottom: space.md, fontWeight: 'bold' }}>
-                {utrError}
+            >
+              <Text
+                style={{
+                  color: activeTab === tab ? '#FFFFFF' : colors.textMuted,
+                  fontWeight: '600',
+                  fontSize: 12,
+                  textTransform: 'capitalize',
+                }}
+              >
+                {tab}
               </Text>
-            ) : null}
-
-            <View style={{ flexDirection: 'row' }}>
-              <Button
-                label="Cancel"
-                onPress={() => setUtrModalVisible(false)}
-                variant="secondary"
-                style={{ flex: 1, marginRight: space.sm }}
-              />
-              <Button
-                label="Verify Payment"
-                onPress={handleUtrSubmit}
-                loading={isProcessingPayment}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </Card>
+            </TouchableOpacity>
+          ))}
         </View>
-      </Modal>
-    
+
+        {/* Tab content */}
+        <View style={{ flex: 1 }}>
+          {activeTab === 'invoices' ? (
+            <FlatList
+              data={invoices}
+              keyExtractor={(item) => String(item.id)}
+              renderItem={renderInvoiceItem}
+              contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
+              ListEmptyComponent={<EmptyState title="No Invoices Sighted" body="Rent invoices generated will list here." />}
+              refreshing={isInvoicesLoading}
+              onRefresh={onRefresh}
+            />
+          ) : null}
+
+          {activeTab === 'payments' ? (
+            <FlatList
+              data={payments}
+              keyExtractor={(item) => String(item.id)}
+              renderItem={renderPaymentItem}
+              contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
+              ListEmptyComponent={<EmptyState title="No Payments Recorded" body="Your processed transaction receipts will list here." />}
+              refreshing={isPaymentsLoading}
+              onRefresh={onRefresh}
+            />
+          ) : null}
+
+          {activeTab === 'ledger' ? (
+            <FlatList
+              data={ledgerWithBalance}
+              keyExtractor={(item) => String(item.id)}
+              renderItem={renderLedgerItem}
+              contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
+              ListEmptyComponent={<EmptyState title="Ledger Log Empty" body="Chronological statements ledger will list here." />}
+              refreshing={isLedgerLoading}
+              onRefresh={onRefresh}
+            />
+          ) : null}
+        </View>
+
+        {/* UPI App Selection Modal */}
+        <Modal
+          visible={upiModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setUpiModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <Card style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.modalHeader}>
+                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
+                  Pay with UPI
+                </Text>
+                <TouchableOpacity onPress={() => setUpiModalVisible(false)}>
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: space.md, lineHeight: 18 }}>
+                Property: <Text style={{ color: colors.text, fontWeight: '700' }}>{resolvePayeeName()}</Text>{"\n"}
+                UPI Payee ID: <Text style={{ color: colors.primary, fontWeight: '700' }}>{resolvePaymentUpiId()}</Text>{"\n"}
+                Amount: <Text style={{ color: colors.text, fontWeight: '700' }}>{selectedInvoice ? formatCurrency(selectedInvoice.amount) : ''}</Text>
+              </Text>
+
+              <TouchableOpacity
+                style={[styles.upiButton, { borderColor: colors.border }]}
+                onPress={() => handleLaunchUpi('gpay')}
+              >
+                <Ionicons name="logo-google" size={20} color="#EA4335" style={{ marginRight: space.sm }} />
+                <Text style={{ color: colors.text, fontWeight: '600' }}>Google Pay</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.upiButton, { borderColor: colors.border }]}
+                onPress={() => handleLaunchUpi('phonepe')}
+              >
+                <Ionicons name="phone-portrait-outline" size={20} color="#5F259F" style={{ marginRight: space.sm }} />
+                <Text style={{ color: colors.text, fontWeight: '600' }}>PhonePe</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.upiButton, { borderColor: colors.border }]}
+                onPress={() => handleLaunchUpi('paytm')}
+              >
+                <Ionicons name="wallet-outline" size={20} color="#00B9F5" style={{ marginRight: space.sm }} />
+                <Text style={{ color: colors.text, fontWeight: '600' }}>Paytm</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.upiButton, { borderColor: colors.border }]}
+                onPress={() => handleLaunchUpi('generic')}
+              >
+                <Ionicons name="apps-outline" size={20} color={colors.primary} style={{ marginRight: space.sm }} />
+                <Text style={{ color: colors.text, fontWeight: '600' }}>Other UPI App</Text>
+              </TouchableOpacity>
+
+              <Button
+                label="Enter UTR Manually"
+                onPress={() => {
+                  setUpiModalVisible(false);
+                  setUtrModalVisible(true);
+                }}
+                variant="secondary"
+                style={{ marginTop: space.sm }}
+              />
+            </Card>
+          </View>
+        </Modal>
+
+        {/* UTR Verification Input Modal */}
+        <Modal
+          visible={utrModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setUtrModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <Card style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize, marginBottom: space.xs }}>
+                Submit UTR Reference
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: space.md }}>
+                Please copy the 12-digit UTR/Ref number from your payment app receipt and paste it below.
+              </Text>
+
+              <TextInput
+                style={[
+                  styles.utrInput,
+                  { color: colors.text, borderColor: utrError ? semanticColor.error.solid : colors.border },
+                ]}
+                placeholder="12-digit UTR code"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="number-pad"
+                maxLength={12}
+                value={utrCode}
+                onChangeText={(text) => {
+                  setUtrCode(text.replace(/\D/g, ''));
+                  setUtrError('');
+                }}
+              />
+
+              {utrError ? (
+                <Text style={{ color: semanticColor.error.solid, fontSize: 12, marginBottom: space.md, fontWeight: 'bold' }}>
+                  {utrError}
+                </Text>
+              ) : null}
+
+              <View style={{ flexDirection: 'row' }}>
+                <Button
+                  label="Cancel"
+                  onPress={() => setUtrModalVisible(false)}
+                  variant="secondary"
+                  style={{ flex: 1, marginRight: space.sm }}
+                />
+                <Button
+                  label="Verify Payment"
+                  onPress={handleUtrSubmit}
+                  loading={isProcessingPayment}
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </Card>
+          </View>
+        </Modal>
+
       </ResponsiveContainer>
     </SafeAreaView>
   );

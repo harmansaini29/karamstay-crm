@@ -33,6 +33,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [pincode, setPincode] = useState('');
+  const [paymentUpiId, setPaymentUpiId] = useState('');
   const [isActive, setIsActive] = useState('true');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
@@ -68,6 +69,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
       setCity(property.city || '');
       setState(property.state || '');
       setPincode(property.pincode || '');
+      setPaymentUpiId(property.payment_upi_id || '');
       setIsActive(String(property.is_active));
       setLatitude(property.latitude || null);
       setLongitude(property.longitude || null);
@@ -197,6 +199,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
       city: city.trim() || null,
       state: state.trim() || null,
       pincode: pincode.trim() || null,
+      payment_upi_id: paymentUpiId.trim() || null,
       // Explicitly coerce to number or null — Android Hermes can pass state
       // variables as string "null" if they were initialised from route.params
       latitude: typeof latitude === 'number' ? latitude : null,
@@ -342,6 +345,17 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
             placeholder="e.g. 201301"
             keyboardType="numeric"
           />
+
+          <Input
+            label="Property Payment GPay / UPI ID"
+            value={paymentUpiId}
+            onChangeText={setPaymentUpiId}
+            placeholder="e.g. karamstay.dlf@okhdfcbank"
+            autoCapitalize="none"
+          />
+          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: -space.xs, marginBottom: space.md, lineHeight: 16 }}>
+            Every tenant assigned to this property will receive this specific UPI ID when making payments via Google Pay, PhonePe, or Paytm.
+          </Text>
 
           {isEdit ? (
             <Input

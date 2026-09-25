@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLogService
 from app.core.config import settings
+from app.core.notify.sms import is_sms_configured, send_sms
 from app.core.notify.whatsapp import is_configured as is_whatsapp_configured
 from app.core.notify.whatsapp import send_template_message
 from app.core.security import (
@@ -104,6 +105,7 @@ class AuthService:
             )
         self.db.commit()
 
+        delivered = False
         if is_whatsapp_configured():
             try:
                 send_template_message(
@@ -116,12 +118,32 @@ class AuthService:
                         },
                     ],
                 )
+                delivered = True
             except Exception as exc:
                 logger.warning("WhatsApp send failed for %s: %s", canonical_phone, exc)
-        else:
-            logger.warning("WhatsApp not configured. Test OTP for %s (%s): %s", tenant.name, canonical_phone, code)
 
-        return code if not is_whatsapp_configured() else None
+        if not delivered and is_sms_configured():
+            try:
+                send_sms(
+                    to=canonical_phone,
+                    message=(
+                        f"Your KaramStay verification OTP code is {code}. "
+                        f"Valid for {settings.otp_expire_minutes} minutes."
+                    ),
+                )
+                delivered = True
+            except Exception as exc:
+                logger.warning("SMS send failed for %s: %s", canonical_phone, exc)
+
+        if not delivered:
+            logger.warning(
+                "Neither WhatsApp nor SMS gateway configured or delivered. Test OTP for %s (%s): %s",
+                tenant.name,
+                canonical_phone,
+                code,
+            )
+
+        return code if not delivered else None
 
     def verify_otp(self, phone: str, code: str) -> TokenPairResponse:
         now = utc_now()
@@ -132,7 +154,8 @@ class AuthService:
         if otp is None and lookup_phone != phone:
             otp = self.repository.get_latest_active_otp(phone, now)
 
-        is_dev_bypass = not is_whatsapp_configured() and code == "123456"
+        is_gateway_active = is_whatsapp_configured() or is_sms_configured()
+        is_dev_bypass = not is_gateway_active and code == "123456"
 
         if otp is None and not is_dev_bypass:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired OTP")

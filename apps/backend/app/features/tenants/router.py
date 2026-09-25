@@ -78,6 +78,11 @@ def get_my_tenancy(current_user: TenantSelfUser, db: DbSession) -> TenancyContex
     return TenancyContextResponse(**TenantService(db).get_my_tenancy_context(current_user))
 
 
+@router.get("/tenants/me/context", response_model=TenancyContextResponse)
+def get_my_tenancy_context_alias(current_user: TenantSelfUser, db: DbSession) -> TenancyContextResponse:
+    return TenancyContextResponse(**TenantService(db).get_my_tenancy_context(current_user))
+
+
 @router.get("/tenancies/{tenancy_id}", response_model=TenancyResponse)
 def get_tenancy(tenancy_id: int, current_user: AnyUser, db: DbSession) -> TenancyResponse:
     return TenantService(db).get_tenancy_detail(tenancy_id, current_user)

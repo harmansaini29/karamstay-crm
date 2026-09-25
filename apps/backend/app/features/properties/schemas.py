@@ -10,6 +10,7 @@ class PropertyCreate(BaseModel):
     city: str | None = Field(default=None, max_length=80)
     state: str | None = Field(default=None, max_length=80)
     pincode: str | None = Field(default=None, max_length=16)
+    payment_upi_id: str | None = Field(default=None, max_length=120)
 
 
 class PropertyUpdate(BaseModel):
@@ -19,6 +20,7 @@ class PropertyUpdate(BaseModel):
     city: str | None = Field(default=None, max_length=80)
     state: str | None = Field(default=None, max_length=80)
     pincode: str | None = Field(default=None, max_length=16)
+    payment_upi_id: str | None = Field(default=None, max_length=120)
     is_active: bool | None = None
 
 
@@ -33,6 +35,7 @@ class PropertyResponse(BaseModel):
     city: str | None
     state: str | None
     pincode: str | None
+    payment_upi_id: str | None = None
     is_active: bool
 
 

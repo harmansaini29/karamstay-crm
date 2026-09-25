@@ -144,25 +144,26 @@ class TenancyUnitContext(BaseModel):
 
     id: int
     unit_no: str
-    building: str | None
-    floor: int | None
+    building: str | None = None
+    floor: int | None = None
     property_id: int
     property_name: str
+    payment_upi_id: str | None = None
 
 
 class TenancyContextResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: int | None = None
     tenant_id: int
-    unit_id: int
-    start_date: date
-    monthly_rent: Decimal
-    security_deposit: Decimal
-    billing_day: int
-    status: str
-    bed_ids: list[int] | None
-    unit: TenancyUnitContext | None
+    unit_id: int | None = None
+    start_date: date | None = None
+    monthly_rent: Decimal = Decimal("0.00")
+    security_deposit: Decimal = Decimal("0.00")
+    billing_day: int = 1
+    status: str = "pending_assignment"
+    bed_ids: list[int] | None = None
+    unit: TenancyUnitContext | None = None
 
 
 class DamageCharge(BaseModel):

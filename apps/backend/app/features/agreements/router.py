@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.features.agreements.schemas import (
+    AgreementApproveResponse,
     AgreementCreate,
+    AgreementKycSubmit,
     AgreementResponse,
     AgreementUpdate,
     OfflineUploadCreate,
@@ -57,6 +59,16 @@ def update_agreement(
     return AgreementService(db).update(agreement_id, payload, current_user)
 
 
+@router.post("/agreements/{agreement_id}/submit-kyc", response_model=AgreementResponse)
+def submit_kyc(
+    agreement_id: int,
+    payload: AgreementKycSubmit,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    return AgreementService(db).submit_kyc(agreement_id, payload, current_user)
+
+
 @router.post("/agreements/{agreement_id}/compile-docx", response_model=AgreementResponse)
 def compile_docx(
     agreement_id: int,
@@ -64,6 +76,15 @@ def compile_docx(
     db: Annotated[Session, Depends(get_db)],
 ):
     return AgreementService(db).compile_docx(agreement_id, current_user)
+
+
+@router.post("/agreements/{agreement_id}/approve-and-archive", response_model=AgreementApproveResponse)
+def approve_and_archive(
+    agreement_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    return AgreementService(db).archive_agreement_to_s3(agreement_id, current_user)
 
 
 @router.get("/agreements/{agreement_id}/uploads", response_model=list[OfflineUploadResponse])
@@ -97,3 +118,14 @@ def update_upload_status(
     db: Annotated[Session, Depends(get_db)],
 ):
     return AgreementService(db).update_upload_status(agreement_id, upload_id, payload, current_user)
+
+
+@router.get("/agreements/{agreement_id}/download")
+def download_agreement_file(
+    agreement_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    doc_type: str = "docx",
+) -> dict:
+    return AgreementService(db).get_download_url(agreement_id, doc_type, current_user)
+

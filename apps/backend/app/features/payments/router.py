@@ -7,6 +7,7 @@ from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.features.auth.dependencies import require_roles
 from app.features.auth.models import User
+from app.features.payments.models import Invoice
 from app.features.payments.schemas import (
     ExpenseCreate,
     ExpenseResponse,
@@ -27,14 +28,33 @@ OwnerManagerUser = Annotated[User, Depends(require_roles(["owner", "manager"]))]
 DbSession = Annotated[Session, Depends(get_db)]
 
 
+def _to_invoice_response(inv: Invoice) -> InvoiceResponse:
+    res = InvoiceResponse.model_validate(inv)
+    try:
+        if inv.tenancy and inv.tenancy.unit and inv.tenancy.unit.property:
+            res.payment_upi_id = inv.tenancy.unit.property.payment_upi_id
+            res.property_name = inv.tenancy.unit.property.name
+    except Exception:
+        pass
+    return res
+
+
 @router.get("/invoices", response_model=list[InvoiceResponse])
 def list_invoices(current_user: AnyUser, db: DbSession) -> list[InvoiceResponse]:
-    return PaymentService(db).list_invoices(current_user)
+    invoices = PaymentService(db).list_invoices(current_user)
+    return [_to_invoice_response(inv) for inv in invoices]
 
 
 @router.post("/invoices", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
 def create_invoice(payload: InvoiceCreate, current_user: FinanceUser, db: DbSession) -> InvoiceResponse:
-    return PaymentService(db).create_invoice(payload, current_user)
+    inv = PaymentService(db).create_invoice(payload, current_user)
+    return _to_invoice_response(inv)
+
+
+@router.get("/invoices/{invoice_id}", response_model=InvoiceResponse)
+def get_invoice(invoice_id: int, current_user: AnyUser, db: DbSession) -> InvoiceResponse:
+    inv = PaymentService(db).get_invoice(invoice_id, current_user)
+    return _to_invoice_response(inv)
 
 
 @router.post("/payments/upi/submit", response_model=PaymentResponse, status_code=status.HTTP_201_CREATED)

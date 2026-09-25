@@ -34,6 +34,7 @@ class PropertyService:
             city=payload.city,
             state=payload.state,
             pincode=payload.pincode,
+            payment_upi_id=payload.payment_upi_id,
             created_by_id=current_user.id,
             updated_by_id=current_user.id,
         )

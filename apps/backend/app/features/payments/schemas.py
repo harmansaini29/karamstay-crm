@@ -21,6 +21,8 @@ class InvoiceResponse(BaseModel):
     amount: Decimal
     late_fee_amount: Decimal
     status: str
+    payment_upi_id: str | None = None
+    property_name: str | None = None
 
 
 class UpiSubmitRequest(BaseModel):

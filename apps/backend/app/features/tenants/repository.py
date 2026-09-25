@@ -50,7 +50,18 @@ class TenantRepository:
 
     def get_tenant_by_user_id(self, user_id: int) -> Tenant | None:
         statement = select(Tenant).where(Tenant.user_id == user_id, Tenant.deleted_at.is_(None))
-        return self.db.scalar(statement)
+        tenant = self.db.scalar(statement)
+        if tenant is not None:
+            return tenant
+        from app.features.auth.models import User
+        user = self.db.get(User, user_id)
+        if user and user.phone:
+            tenant = self.get_tenant_by_phone(user.phone)
+            if tenant is not None:
+                tenant.user_id = user_id
+                self.db.commit()
+                return tenant
+        return None
 
     def add_tenant(self, tenant: Tenant) -> Tenant:
         self.db.add(tenant)
@@ -93,12 +104,23 @@ class TenantRepository:
             select(Tenancy)
             .where(
                 Tenancy.tenant_id == tenant_id,
-                Tenancy.status == "active",
+                Tenancy.status.in_(["active", "pending", "confirmed"]),
                 Tenancy.deleted_at.is_(None),
             )
-            .order_by(Tenancy.start_date.desc())
+            .order_by(Tenancy.start_date.desc(), Tenancy.id.desc())
         )
-        return self.db.scalar(statement)
+        found = self.db.scalar(statement)
+        if found is not None:
+            return found
+        fallback_stmt = (
+            select(Tenancy)
+            .where(
+                Tenancy.tenant_id == tenant_id,
+                Tenancy.deleted_at.is_(None),
+            )
+            .order_by(Tenancy.id.desc())
+        )
+        return self.db.scalar(fallback_stmt)
 
     def list_tenancies(
         self,

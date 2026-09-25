@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     aws_secret_access_key: str | None = None
     s3_presigned_url_expire_seconds: int = 300
 
+    # SMS & WhatsApp OTP Gateway Credentials
+    sms_gateway_provider: str = "mock"
+    twilio_account_sid: str | None = None
+    twilio_auth_token: str | None = None
+    twilio_from_phone: str | None = None
+    fast2sms_api_key: str | None = None
+    msg91_auth_key: str | None = None
+    msg91_sender_id: str | None = None
+    whatsapp_otp_template: str = "karamstay_otp_verification"
+
     rate_limit_enabled: bool = True
 
     otp_expire_minutes: int = 10

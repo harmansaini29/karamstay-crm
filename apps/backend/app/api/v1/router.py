@@ -13,6 +13,7 @@ from app.features.reports.router import router as reports_router
 from app.features.settings.router import router as settings_router
 from app.features.staff.router import router as staff_router
 from app.features.tenants.router import router as tenants_router
+from app.features.vault.router import router as vault_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
@@ -28,3 +29,4 @@ api_router.include_router(reports_router, tags=["reports"])
 api_router.include_router(settings_router, tags=["settings"])
 api_router.include_router(consents_router, tags=["consents"])
 api_router.include_router(staff_router, tags=["staff"])
+api_router.include_router(vault_router, tags=["vault"])

@@ -18,6 +18,12 @@ class ObjectStorage(Protocol):
 
     def delete(self, *, key: str) -> None: ...
 
+    def list_objects(self, *, prefix: str = "") -> list[dict]: ...
+
+    def get_bytes(self, *, key: str) -> bytes | None: ...
+
+    def object_exists(self, *, key: str) -> bool: ...
+
 
 class S3Storage:
     """Production AWS S3 Storage implementation using boto3 with SigV4.
@@ -74,6 +80,40 @@ class S3Storage:
     def delete(self, *, key: str) -> None:
         self._client.delete_object(Bucket=self._bucket, Key=key)
 
+    def list_objects(self, *, prefix: str = "") -> list[dict]:
+        try:
+            paginator = self._client.get_paginator("list_objects_v2")
+            pages = paginator.paginate(Bucket=self._bucket, Prefix=prefix.lstrip("/"))
+            results = []
+            for page in pages:
+                for obj in page.get("Contents", []):
+                    k = obj["Key"]
+                    results.append({
+                        "key": k,
+                        "size": obj["Size"],
+                        "last_modified": obj["LastModified"].isoformat(),
+                        "download_url": self.presign_download(key=k),
+                    })
+            return results
+        except Exception as exc:
+            logger.warning("S3 list_objects error for prefix %s: %s", prefix, exc)
+            return []
+
+    def get_bytes(self, *, key: str) -> bytes | None:
+        try:
+            resp = self._client.get_object(Bucket=self._bucket, Key=key)
+            return resp["Body"].read()
+        except Exception as exc:
+            logger.warning("S3 get_bytes error for key %s: %s", key, exc)
+            return None
+
+    def object_exists(self, *, key: str) -> bool:
+        try:
+            self._client.head_object(Bucket=self._bucket, Key=key)
+            return True
+        except Exception:
+            return False
+
 
 class LocalStorage:
     """Mock/Fallback storage for local development and test environments when AWS is unconfigured."""
@@ -90,7 +130,10 @@ class LocalStorage:
 
     def presign_upload(self, *, key: str, content_type: str, expires_in: int | None = None) -> str:
         ttl = expires_in if expires_in is not None else self._default_expires
-        return f"https://s3.local.karamstay.internal/{self._bucket}/{key}?action=put&content_type={content_type}&expires_in={ttl}"
+        return (
+            f"https://s3.local.karamstay.internal/{self._bucket}/{key}"
+            f"?action=put&content_type={content_type}&expires_in={ttl}"
+        )
 
     def presign_download(self, *, key: str, expires_in: int | None = None) -> str:
         ttl = expires_in if expires_in is not None else self._default_expires
@@ -105,6 +148,25 @@ class LocalStorage:
     def get_stored_data(self, key: str) -> bytes | None:
         item = self._in_memory_store.get(key)
         return item[0] if item else None
+
+    def list_objects(self, *, prefix: str = "") -> list[dict]:
+        results = []
+        clean_prefix = prefix.lstrip("/")
+        for key, (data, _ct) in self._in_memory_store.items():
+            if not clean_prefix or key.startswith(clean_prefix):
+                results.append({
+                    "key": key,
+                    "size": len(data),
+                    "last_modified": "2026-09-25T16:00:00+00:00",
+                    "download_url": self.presign_download(key=key),
+                })
+        return results
+
+    def get_bytes(self, *, key: str) -> bytes | None:
+        return self.get_stored_data(key)
+
+    def object_exists(self, *, key: str) -> bool:
+        return key in self._in_memory_store
 
 
 _storage: ObjectStorage | None = None

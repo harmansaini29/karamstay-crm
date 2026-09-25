@@ -13,6 +13,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
+import { Button } from '../../components/Button';
+import { AgreementTrackerCard } from '../../components/AgreementTrackerCard';
+
 interface DocumentItem {
   id: number;
   document_type: string;
@@ -22,7 +25,7 @@ interface DocumentItem {
   created_at: string;
 }
 
-export const TenantDocumentsScreen: React.FC = () => {
+export const TenantDocumentsScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
   const { colors, font, space } = useTheme();
   const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
@@ -39,6 +42,30 @@ export const TenantDocumentsScreen: React.FC = () => {
       return res.data;
     },
   });
+
+  const {
+    data: agreements = [],
+    isLoading: isAgreementsLoading,
+    refetch: refetchAgreements,
+  } = useQuery<any[]>({
+    queryKey: ['my-agreements'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/agreements');
+        return Array.isArray(res.data) ? res.data : [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const agreement = agreements[0] ?? null;
+
+  const handleRefresh = () => {
+    refetch();
+    refetchAgreements();
+  };
+
 
   const handleDownload = async (id: number) => {
     try {
@@ -89,6 +116,91 @@ export const TenantDocumentsScreen: React.FC = () => {
     </Card>
   );
 
+  const renderHeader = () => (
+    <View style={{ marginBottom: space.md }}>
+      {/* Agreement & Contract Card */}
+      {agreement ? (
+        <Card style={{ borderWidth: 1, borderColor: colors.border, padding: 14, marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: colors.primary + '15', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                <Ionicons name="document-text" size={18} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.bodyStrong.fontSize }}>
+                  {agreement.template_name || 'Rental Agreement'}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
+                  Legal Tenancy Contract
+                </Text>
+              </View>
+            </View>
+            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: agreement.tracker_stage >= 4 ? semanticColor.success.bg : semanticColor.warning.bg }}>
+              <Text style={{ color: agreement.tracker_stage >= 4 ? semanticColor.success.fg : semanticColor.warning.fg, fontWeight: '700', fontSize: 10 }}>
+                {agreement.tracker_stage >= 4 ? 'APPROVED & ARCHIVED' : `STAGE ${agreement.tracker_stage || 1} / 4`}
+              </Text>
+            </View>
+          </View>
+
+          {/* Stepper tracker */}
+          <View style={{ marginVertical: 8 }}>
+            <AgreementTrackerCard stage={agreement.tracker_stage || 0} />
+          </View>
+
+          {/* Action buttons */}
+          {(!agreement.tracker_stage || (agreement.tracker_stage <= 1 && agreement.status !== 'docx_generated' && agreement.status !== 'approved')) ? (
+            <Button
+              label="Fill & Sign Agreement Now"
+              onPress={() => navigation?.navigate('TenantAgreementFormScreen', { agreementId: agreement.id })}
+              style={{ marginTop: 8 }}
+            />
+          ) : (
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+              {agreement.pdf_download_url || agreement.docx_download_url ? (
+                <View style={{ flex: 1 }}>
+                  <Button
+                    label="Download Contract"
+                    variant="secondary"
+                    onPress={() => {
+                      const url = agreement.pdf_download_url || agreement.docx_download_url;
+                      if (url) WebBrowser.openBrowserAsync(url);
+                    }}
+                  />
+                </View>
+              ) : null}
+              <View style={{ flex: 1 }}>
+                <Button
+                  label={agreement.tracker_stage >= 4 ? 'View Agreement' : 'Edit / Review Form'}
+                  variant={agreement.pdf_download_url ? 'primary' : 'secondary'}
+                  onPress={() => navigation?.navigate('TenantAgreementFormScreen', { agreementId: agreement.id })}
+                />
+              </View>
+            </View>
+          )}
+        </Card>
+      ) : (
+        <Card style={{ borderWidth: 1, borderColor: colors.border, padding: 14, marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="information-circle-outline" size={24} color={colors.primary} style={{ marginRight: 10 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.bodyStrong.fontSize }}>
+                Rental Agreement Not Initiated
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                Once your property manager assigns your room agreement, you can fill your legal details and KYC documents here.
+              </Text>
+            </View>
+          </View>
+        </Card>
+      )}
+
+      {/* Section title for documents */}
+      <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize, marginTop: 8, marginBottom: 4 }}>
+        Archived Verification Files ({documents.length})
+      </Text>
+    </View>
+  );
+
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
@@ -106,16 +218,18 @@ export const TenantDocumentsScreen: React.FC = () => {
         data={documents}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderDocumentItem}
+        ListHeaderComponent={renderHeader}
         contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}
         ListEmptyComponent={
           <EmptyState
-            title="Vault is Empty"
+            title="No Extra Files Yet"
             body="Documents like signed rental contracts and payment receipts uploaded by your manager will show here."
           />
         }
-        refreshing={isLoading}
-        onRefresh={refetch}
+        refreshing={isLoading || isAgreementsLoading}
+        onRefresh={handleRefresh}
       />
+
     
       </ResponsiveContainer>
     </SafeAreaView>

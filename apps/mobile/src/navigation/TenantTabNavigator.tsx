@@ -18,6 +18,7 @@ import { TenantAgreementForm } from '../features/tenants/TenantAgreementForm';
 
 const Tab = createBottomTabNavigator();
 const HomeStack = createNativeStackNavigator();
+const DocumentsStack = createNativeStackNavigator();
 
 // Home tab wrapped in a small stack for the agreement onboarding gate.
 // On first login the gate fires, checks for a pending agreement, and either
@@ -31,6 +32,14 @@ const HomeStackNavigator = () => (
     <HomeStack.Screen name="TenantAgreementFormScreen" component={TenantAgreementForm} />
   </HomeStack.Navigator>
 );
+
+const DocumentsStackNavigator = () => (
+  <DocumentsStack.Navigator screenOptions={{ headerShown: false }}>
+    <DocumentsStack.Screen name="DocumentsList" component={TenantDocumentsScreen} />
+    <DocumentsStack.Screen name="TenantAgreementFormScreen" component={TenantAgreementForm} />
+  </DocumentsStack.Navigator>
+);
+
 
 export const TenantTabNavigator: React.FC = () => {
   const { colors } = useTheme();
@@ -91,9 +100,10 @@ export const TenantTabNavigator: React.FC = () => {
       {/* Home tab uses the agreement gate stack as its component */}
       <Tab.Screen name="Home" component={HomeStackNavigator} />
       <Tab.Screen name="Payments" component={TenantPaymentsScreen} />
-      <Tab.Screen name="Documents" component={TenantDocumentsScreen} />
+      <Tab.Screen name="Documents" component={DocumentsStackNavigator} />
       <Tab.Screen name="Complaints" component={TenantComplaintsScreen} />
       <Tab.Screen name="Profile" component={TenantProfileScreen} />
+
     </Tab.Navigator>
   );
 };
