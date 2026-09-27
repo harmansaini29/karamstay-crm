@@ -85,10 +85,7 @@ class AuthService:
         tenant = self.tenant_repository.get_tenant_by_phone(phone)
         if tenant is None:
             logger.info("OTP requested for unregistered phone %s", phone)
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="This phone number is not registered as a tenant. Please contact your property manager.",
-            )
+            return None
 
         canonical_phone = tenant.phone
         code = f"{secrets.randbelow(10**settings.otp_length):0{settings.otp_length}d}"
