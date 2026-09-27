@@ -8,10 +8,17 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.karamstay.app"
+      "bundleIdentifier": "com.karamstay.app",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Allow KaramStay to authenticate with Face ID for quick 7-day biometric login."
+      }
     },
     "android": {
       "package": "com.karamstay.app",
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -25,6 +32,12 @@
     },
     "plugins": [
       "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow KaramStay to authenticate with Face ID for quick 7-day biometric login."
+        }
+      ],
       [
         "expo-build-properties",
         {

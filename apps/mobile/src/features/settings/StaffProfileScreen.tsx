@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
+import { BiometricSettingToggle } from '../../components/BiometricSettingToggle';
 
 export const StaffProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { colors, font, space, radius } = useTheme();
@@ -130,10 +131,13 @@ export const StaffProfileScreen: React.FC<{ navigation: any }> = ({ navigation }
           </View>
         </Card>
 
-        {/* Data Rights Link */}
+        {/* Data Rights & Biometric Security */}
         <Text style={[styles.sectionTitle, { color: colors.text, fontSize: font.bodyStrong.fontSize, marginBottom: space.sm, marginTop: space.md }]}>
           Privacy & Security
         </Text>
+
+        <BiometricSettingToggle style={{ marginBottom: space.sm }} />
+
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => navigation.navigate('PrivacyData')}

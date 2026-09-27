@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
+import { BiometricSettingToggle } from '../../components/BiometricSettingToggle';
 
 interface TenantProfile {
   id: number;
@@ -139,6 +140,12 @@ export const TenantProfileScreen: React.FC = () => {
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </TouchableOpacity>
         </Card>
+
+        {/* Security and Biometrics */}
+        <Text style={[styles.sectionTitle, { color: colors.text, fontSize: font.bodyStrong.fontSize, marginBottom: space.sm, marginTop: space.md }]}>
+          Security & Biometrics
+        </Text>
+        <BiometricSettingToggle style={{ marginBottom: space.md }} />
 
         {/* Logout Button */}
         <TouchableOpacity

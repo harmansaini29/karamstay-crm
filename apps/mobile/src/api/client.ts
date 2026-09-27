@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 import { storage } from '../utils/storage';
+import { syncBiometricSessionTokens } from '../utils/biometrics';
 // Mock DB — loaded only when EXPO_PUBLIC_MOCK_API === 'true'
 import { handleMockRequest } from './mockDb';
 
@@ -135,6 +136,7 @@ apiClient.interceptors.response.use(
         await storage.setItem('access_token', access_token);
         await storage.setItem('refresh_token', newRefreshToken);
         syncAuthHeaders(access_token);
+        await syncBiometricSessionTokens(access_token, newRefreshToken);
 
         isRefreshing = false;
         onRefreshed(access_token);

@@ -20,6 +20,14 @@ import { Toast } from '../../components/States';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BiometricPromptCard } from '../../components/BiometricPromptCard';
+import {
+  checkBiometricSupport,
+  getBiometricSession,
+  clearBiometricSession,
+  BiometricSupportStatus,
+  BiometricSessionData,
+} from '../../utils/biometrics';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -243,7 +251,93 @@ interface LoginScreenProps {
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const { colors, font, space, radius, shadows, isDark } = useTheme();
-  const { login, requestOtp } = useAuth();
+  const { login, requestOtp, loginWithBiometrics } = useAuth();
+
+  // Biometric 7-day session states
+  const [biometricSupport, setBiometricSupport] = useState<BiometricSupportStatus>({
+    hasHardware: false,
+    isEnrolled: false,
+    biometricType: 'none',
+    biometricLabel: 'Biometrics',
+    iconName: 'finger-print-outline',
+  });
+  const [biometricSession, setBiometricSession] = useState<BiometricSessionData | null>(null);
+  const [biometricValid, setBiometricValid] = useState(false);
+  const [biometricExpired, setBiometricExpired] = useState(false);
+  const [remainingDays, setRemainingDays] = useState(0);
+  const [remainingHours, setRemainingHours] = useState(0);
+  const [isBiometricLoading, setIsBiometricLoading] = useState(false);
+
+  useEffect(() => {
+    loadBiometricState();
+  }, []);
+
+  const loadBiometricState = async () => {
+    try {
+      const support = await checkBiometricSupport();
+      setBiometricSupport(support);
+      if (support.hasHardware && support.isEnrolled) {
+        const result = await getBiometricSession();
+        setBiometricSession(result.session);
+        setBiometricValid(result.isValid);
+        setBiometricExpired(result.isExpired);
+        setRemainingDays(result.remainingDays);
+        setRemainingHours(result.remainingHours);
+      } else {
+        setBiometricSession(null);
+        setBiometricValid(false);
+        setBiometricExpired(false);
+        setRemainingDays(0);
+        setRemainingHours(0);
+      }
+    } catch (_e) {
+      setBiometricSession(null);
+      setBiometricValid(false);
+      setBiometricExpired(false);
+      setRemainingDays(0);
+      setRemainingHours(0);
+    }
+  };
+
+  const handleBiometricAuth = async () => {
+    setIsBiometricLoading(true);
+    try {
+      const res = await loginWithBiometrics();
+      if (res.success) {
+        showToast(`Signed in with ${biometricSupport.biometricLabel}`, 'success');
+      } else if (res.isFallback) {
+        // Native biometric dialog fallback button tapped ("Use Password or OTP")
+        handleFallbackToManual();
+      } else if (res.error && !res.isCanceled) {
+        showToast(res.error, 'error');
+        await loadBiometricState();
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Biometric authentication failed', 'error');
+    } finally {
+      setIsBiometricLoading(false);
+    }
+  };
+
+  const handleFallbackToManual = () => {
+    if (biometricSession?.portalType === 'tenant') {
+      if (biometricSession.userIdentifier) {
+        setPhone(biometricSession.userIdentifier);
+      }
+      setLoginMode('tenant');
+    } else {
+      if (biometricSession?.userIdentifier) {
+        setEmail(biometricSession.userIdentifier);
+      }
+      setLoginMode('staff');
+    }
+  };
+
+  const handleClearBiometricProfile = async () => {
+    await clearBiometricSession();
+    await loadBiometricState();
+    showToast('Biometric profile cleared on this device', 'success');
+  };
 
   // Controls whether intro overlay is visible
   const [showIntro, setShowIntro] = useState(true);
@@ -416,69 +510,85 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
                 {/* Chooser Screen */}
                 {loginMode === 'chooser' ? (
-                  <Card style={[styles.cardContainer, elevatedCard, { borderColor: colors.border }]}>
-                    <Text style={[styles.cardTitle, { color: colors.text, fontSize: font.h2.fontSize }]}>
-                      Welcome back
-                    </Text>
-                    <Text style={[styles.cardDesc, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>
-                      Choose your login portal to continue
-                    </Text>
+                  <>
+                    {(biometricValid || biometricExpired) && biometricSession ? (
+                      <BiometricPromptCard
+                        supportStatus={biometricSupport}
+                        sessionData={biometricSession}
+                        remainingDays={remainingDays}
+                        remainingHours={remainingHours}
+                        isExpired={biometricExpired}
+                        isLoading={isBiometricLoading}
+                        onAuthenticate={handleBiometricAuth}
+                        onFallbackToManual={handleFallbackToManual}
+                        onClearAccount={handleClearBiometricProfile}
+                      />
+                    ) : null}
 
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      style={[
-                        styles.portalButton,
-                        {
-                          backgroundColor: colors.surface,
-                          borderColor: colors.border,
-                          borderRadius: radius.md,
-                          ...activePortalShadow,
-                        },
-                      ]}
-                      onPress={() => setLoginMode('staff')}
-                    >
-                      <View style={[styles.portalIconWrap, { backgroundColor: colors.primary + '15' }]}>
-                        <Ionicons name="people" size={20} color={colors.primary} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.portalTitle, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
-                          Staff Portal
-                        </Text>
-                        <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
-                          Owner · Manager · Accountant
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-                    </TouchableOpacity>
+                    <Card style={[styles.cardContainer, elevatedCard, { borderColor: colors.border }]}>
+                      <Text style={[styles.cardTitle, { color: colors.text, fontSize: font.h2.fontSize }]}>
+                        Welcome back
+                      </Text>
+                      <Text style={[styles.cardDesc, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>
+                        Choose your login portal to continue
+                      </Text>
 
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      style={[
-                        styles.portalButton,
-                        {
-                          backgroundColor: colors.surface,
-                          borderColor: colors.border,
-                          borderRadius: radius.md,
-                          ...activePortalShadow,
-                          marginBottom: 0,
-                        },
-                      ]}
-                      onPress={() => setLoginMode('tenant')}
-                    >
-                      <View style={[styles.portalIconWrap, { backgroundColor: colors.primary + '15' }]}>
-                        <Ionicons name="person" size={20} color={colors.primary} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.portalTitle, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
-                          Tenant Portal
-                        </Text>
-                        <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
-                          Rent · Invoices · Complaints
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-                    </TouchableOpacity>
-                  </Card>
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        style={[
+                          styles.portalButton,
+                          {
+                            backgroundColor: colors.surface,
+                            borderColor: colors.border,
+                            borderRadius: radius.md,
+                            ...activePortalShadow,
+                          },
+                        ]}
+                        onPress={() => setLoginMode('staff')}
+                      >
+                        <View style={[styles.portalIconWrap, { backgroundColor: colors.primary + '15' }]}>
+                          <Ionicons name="people" size={20} color={colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.portalTitle, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
+                            Staff Portal
+                          </Text>
+                          <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
+                            Owner · Manager · Accountant
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        style={[
+                          styles.portalButton,
+                          {
+                            backgroundColor: colors.surface,
+                            borderColor: colors.border,
+                            borderRadius: radius.md,
+                            ...activePortalShadow,
+                            marginBottom: 0,
+                          },
+                        ]}
+                        onPress={() => setLoginMode('tenant')}
+                      >
+                        <View style={[styles.portalIconWrap, { backgroundColor: colors.primary + '15' }]}>
+                          <Ionicons name="person" size={20} color={colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.portalTitle, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
+                            Tenant Portal
+                          </Text>
+                          <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
+                            Rent · Invoices · Complaints
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                      </TouchableOpacity>
+                    </Card>
+                  </>
                 ) : null}
 
                 {/* Staff Login */}
@@ -500,11 +610,41 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                     <Text
                       style={[
                         styles.cardDesc,
-                        { color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: space.lg },
+                        { color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: space.md },
                       ]}
                     >
                       Enter email & password to access your dashboard
                     </Text>
+
+                    {biometricValid && biometricSession && biometricSession.portalType === 'staff' && (
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={handleBiometricAuth}
+                        disabled={isBiometricLoading}
+                        style={[
+                          styles.portalButton,
+                          {
+                            backgroundColor: colors.primary + '12',
+                            borderColor: colors.primary + '35',
+                            borderRadius: radius.md,
+                            marginBottom: space.lg,
+                          },
+                        ]}
+                      >
+                        <View style={[styles.portalIconWrap, { backgroundColor: colors.primary + '20' }]}>
+                          <Ionicons name={biometricSupport.iconName} size={20} color={colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.portalTitle, { color: colors.primary, fontSize: font.bodyStrong.fontSize }]}>
+                            Fast Unlock as {biometricSession.userName}
+                          </Text>
+                          <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
+                            {biometricSupport.biometricLabel} • {remainingDays}d session active
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+                      </TouchableOpacity>
+                    )}
 
                     <Input
                       label="Email Address"
@@ -552,11 +692,41 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                     <Text
                       style={[
                         styles.cardDesc,
-                        { color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: space.lg },
+                        { color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: space.md },
                       ]}
                     >
                       Enter your registered phone number to receive a secure OTP
                     </Text>
+
+                    {biometricValid && biometricSession && biometricSession.portalType === 'tenant' && (
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={handleBiometricAuth}
+                        disabled={isBiometricLoading}
+                        style={[
+                          styles.portalButton,
+                          {
+                            backgroundColor: colors.primary + '12',
+                            borderColor: colors.primary + '35',
+                            borderRadius: radius.md,
+                            marginBottom: space.lg,
+                          },
+                        ]}
+                      >
+                        <View style={[styles.portalIconWrap, { backgroundColor: colors.primary + '20' }]}>
+                          <Ionicons name={biometricSupport.iconName} size={20} color={colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.portalTitle, { color: colors.primary, fontSize: font.bodyStrong.fontSize }]}>
+                            Fast Unlock as {biometricSession.userName}
+                          </Text>
+                          <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
+                            {biometricSupport.biometricLabel} • {remainingDays}d session active
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+                      </TouchableOpacity>
+                    )}
 
                     <Input
                       label="Phone Number"

@@ -4,6 +4,17 @@ import Constants from 'expo-constants';
 import { storage } from '../../utils/storage';
 import { apiClient, parseApiError, syncAuthHeaders } from '../../api/client';
 import { jwtDecode } from 'jwt-decode';
+import {
+  checkBiometricSupport,
+  isBiometricsEnabled,
+  getBiometricSession,
+  saveBiometricSession,
+  clearBiometricSession,
+  promptBiometricAuth,
+  BIOMETRIC_STORAGE_KEY_ENABLED,
+  BIOMETRIC_STORAGE_KEY_SESSION,
+  BiometricSessionData,
+} from '../../utils/biometrics';
 
 interface UserProfile {
   id: number;
@@ -27,7 +38,13 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   requestOtp: (phone: string) => Promise<string | undefined>;
   verifyOtp: (phone: string, code: string) => Promise<void>;
-  logout: () => Promise<void>;
+  loginWithBiometrics: () => Promise<{
+    success: boolean;
+    error?: string;
+    isCanceled?: boolean;
+    isFallback?: boolean;
+  }>;
+  logout: (options?: { clearBiometrics?: boolean } | boolean | unknown) => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
 
@@ -99,16 +116,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const fetchProfile = async () => {
+  const fetchProfile = async (): Promise<UserProfile | null> => {
     try {
       const res = await apiClient.get('/auth/me');
-      setUser(res.data);
-      setRole(res.data.role.name);
+      const profile: UserProfile = res.data;
+      setUser(profile);
+      setRole(profile.role.name);
       setIsAuthenticated(true);
       
       // Fetch consents if role is tenant
       let accepted = true;
-      if (res.data.role.name === 'tenant') {
+      if (profile.role.name === 'tenant') {
         try {
           const consentsRes = await apiClient.get('/consents/me');
           const consents = consentsRes.data || [];
@@ -132,9 +150,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (err) {
         // Device token registration failed silently in background
       }
+      return profile;
     } catch (err) {
       // Profile fetch failed, tokens might be expired/revoked
       await handleLogoutActions();
+      return null;
     }
   };
 
@@ -150,7 +170,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await storage.setItem('refresh_token', refresh_token);
       syncAuthHeaders(access_token);
       
-      await fetchProfile();
+      const profile = await fetchProfile();
+      if (profile) {
+        try {
+          const support = await checkBiometricSupport();
+          const explicitSetting = await storage.getItem(BIOMETRIC_STORAGE_KEY_ENABLED);
+          if (support.hasHardware && support.isEnrolled && explicitSetting !== 'false') {
+            await saveBiometricSession({
+              accessToken: access_token,
+              refreshToken: refresh_token,
+              userId: profile.id,
+              userName: profile.name,
+              userRole: profile.role.name,
+              userIdentifier: profile.email || profile.phone,
+              portalType: 'staff',
+            });
+          }
+        } catch (_bioErr) {}
+      }
     } catch (err: any) {
       await handleLogoutActions();
       throw parseApiError(err);
@@ -180,10 +217,161 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await storage.setItem('refresh_token', refresh_token);
       syncAuthHeaders(access_token);
 
-      await fetchProfile();
+      const profile = await fetchProfile();
+      if (profile) {
+        try {
+          const support = await checkBiometricSupport();
+          const explicitSetting = await storage.getItem(BIOMETRIC_STORAGE_KEY_ENABLED);
+          if (support.hasHardware && support.isEnrolled && explicitSetting !== 'false') {
+            await saveBiometricSession({
+              accessToken: access_token,
+              refreshToken: refresh_token,
+              userId: profile.id,
+              userName: profile.name,
+              userRole: profile.role.name,
+              userIdentifier: profile.phone,
+              portalType: 'tenant',
+            });
+          }
+        } catch (_bioErr) {}
+      }
     } catch (err: any) {
       await handleLogoutActions();
       throw parseApiError(err);
+    }
+  };
+
+  const loginWithBiometrics = async (): Promise<{
+    success: boolean;
+    error?: string;
+    isCanceled?: boolean;
+    isFallback?: boolean;
+  }> => {
+    try {
+      const sessionResult = await getBiometricSession();
+      if (!sessionResult.isValid || !sessionResult.session) {
+        if (sessionResult.isExpired) {
+          return {
+            success: false,
+            error: 'Your 7-day biometric authorization has expired. Please sign in with password or OTP to renew.',
+          };
+        }
+        return {
+          success: false,
+          error: 'No active biometric session found on this device. Please sign in with password or OTP.',
+        };
+      }
+
+      // Prompt biometric authentication (Face ID, Touch ID, Fingerprint)
+      const promptResult = await promptBiometricAuth(
+        `Verify your identity as ${sessionResult.session.userName} to sign in`
+      );
+
+      if (!promptResult.success) {
+        return {
+          success: false,
+          error: promptResult.error || 'Biometric authentication was canceled or failed.',
+          isCanceled: promptResult.isCanceled,
+          isFallback: promptResult.isFallback,
+        };
+      }
+
+      // Biometrics scan succeeded! Restore tokens and session
+      setIsLoading(true);
+      const { accessToken, refreshToken, enrolledAt, expiresAt } = sessionResult.session;
+
+      let activeAccessToken = accessToken;
+      let activeRefreshToken = refreshToken;
+      let profile: UserProfile | null = null;
+
+      try {
+        syncAuthHeaders(activeAccessToken);
+        const testRes = await apiClient.get('/auth/me');
+        profile = testRes.data;
+      } catch (_authErr) {
+        // Access token might be expired (15m window); refresh via backend
+        try {
+          const refreshRes = await apiClient.post('/auth/refresh', {
+            refresh_token: activeRefreshToken,
+          });
+          activeAccessToken = refreshRes.data.access_token;
+          activeRefreshToken = refreshRes.data.refresh_token;
+
+          await storage.setItem('access_token', activeAccessToken);
+          await storage.setItem('refresh_token', activeRefreshToken);
+          syncAuthHeaders(activeAccessToken);
+
+          const profileRes = await apiClient.get('/auth/me');
+          profile = profileRes.data;
+        } catch (_refreshErr) {
+          await clearBiometricSession();
+          await handleLogoutActions();
+          return {
+            success: false,
+            error: 'Session expired or invalidated. Please sign in with your password or OTP.',
+          };
+        }
+      }
+
+      if (!profile) {
+        await clearBiometricSession();
+        await handleLogoutActions();
+        return {
+          success: false,
+          error: 'Unable to restore user profile. Please sign in again.',
+        };
+      }
+
+      setUser(profile);
+      setRole(profile.role.name);
+      setIsAuthenticated(true);
+
+      // Fetch consents if role is tenant
+      let accepted = true;
+      if (profile.role.name === 'tenant') {
+        try {
+          const consentsRes = await apiClient.get('/consents/me');
+          const consents = consentsRes.data || [];
+          const primaryConsent = consents.find((c: any) => c.consent_type === 'primary_data');
+          accepted = primaryConsent ? primaryConsent.granted : false;
+        } catch (_consentErr) {
+          accepted = false;
+        }
+      }
+      setHasAcceptedConsent(accepted);
+
+      // Register device for notifications
+      try {
+        const token = await registerForPushNotificationsAsync();
+        if (token) {
+          await apiClient.post('/devices', {
+            fcm_token: token,
+            platform: Platform.OS,
+          });
+        }
+      } catch (_devErr) {}
+
+      // Preserve active tokens in storage & update biometric session while retaining 7-day validity
+      await storage.setItem('access_token', activeAccessToken);
+      await storage.setItem('refresh_token', activeRefreshToken);
+
+      const updatedSession: BiometricSessionData = {
+        ...sessionResult.session,
+        accessToken: activeAccessToken,
+        refreshToken: activeRefreshToken,
+        enrolledAt,
+        expiresAt,
+      };
+      await storage.setItem(BIOMETRIC_STORAGE_KEY_SESSION, JSON.stringify(updatedSession));
+
+      return { success: true };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Biometric login failed. Please try again.',
+      };
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -197,11 +385,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setHasAcceptedConsent(true);
   };
 
-  const logout = async () => {
+  const logout = async (options?: { clearBiometrics?: boolean } | boolean | unknown) => {
     try {
+      const clearBiometrics =
+        options === true ||
+        (typeof options === 'object' &&
+          options !== null &&
+          'clearBiometrics' in options &&
+          (options as any).clearBiometrics === true);
+      const isBioEnabled = await isBiometricsEnabled();
       const refreshToken = await storage.getItem('refresh_token');
-      if (refreshToken) {
-        await apiClient.post('/auth/logout', { refresh_token: refreshToken });
+      if (clearBiometrics || !isBioEnabled) {
+        if (refreshToken) {
+          await apiClient.post('/auth/logout', { refresh_token: refreshToken });
+        }
+        await clearBiometricSession();
       }
     } catch (err) {
       // Silently fail logout API call, proceed with clearing storage
@@ -222,8 +420,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         requestOtp,
         verifyOtp,
+        loginWithBiometrics,
         logout,
-        refreshProfile: fetchProfile,
+        refreshProfile: async () => {
+          await fetchProfile();
+        },
       }}
     >
       {children}

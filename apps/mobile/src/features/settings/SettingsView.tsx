@@ -16,6 +16,7 @@ import { Toast } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
+import { BiometricSettingToggle } from '../../components/BiometricSettingToggle';
 
 interface SettingsData {
   late_fee_grace_days: number;
@@ -191,6 +192,11 @@ export const SettingsView: React.FC<{ navigation: any }> = ({ navigation }) => {
             onChangeText={setNoticeTemplate}
             placeholder="notice_template_name"
           />
+
+          <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: 14, marginTop: space.lg, marginBottom: space.xs }}>
+            Device Security
+          </Text>
+          <BiometricSettingToggle style={{ marginBottom: space.sm }} />
 
           <Button
             label="Save Settings"
