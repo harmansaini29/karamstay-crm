@@ -1233,6 +1233,33 @@ export const handleMockRequest = async (
     return { data: upload, status: 200 };
   }
 
+  // POST /agreements/{id}/approve-and-archive
+  const agApproveMatch = url.match(/^\/agreements\/(\d+)\/approve-and-archive$/);
+  if (agApproveMatch && method === 'post') {
+    const agId = parseInt(agApproveMatch[1], 10);
+    const ag = mockAgreements.find((a) => a.id === agId);
+    if (!ag) return { data: {}, status: 404 };
+    ag.status = 'approved';
+    ag.tracker_stage = 4;
+    ag.s3_folder_path = `tenants/tenant_${ag.tenant_id}/Unit_${ag.tenancy_id}`;
+    ag.s3_archive_url = 'https://s3.ap-south-1.amazonaws.com/karamstay-bucket/archive.pdf';
+    // mark all uploads as APPROVED
+    mockAgreementUploads
+      .filter((u) => u.agreement_id === agId)
+      .forEach((u) => {
+        u.status = 'APPROVED';
+      });
+    return {
+      data: {
+        agreement: ag,
+        s3_folder_path: ag.s3_folder_path,
+        archived_files: ['agreement.docx', 'agreement.pdf'],
+        message: 'Agreement, KYC documents, and offline verifications successfully archived into AWS S3 storage.',
+      },
+      status: 200,
+    };
+  }
+
   // --- STAFF MANAGEMENT ---
   if (url === '/staff' && method === 'get') {
     return { data: mockStaff, status: 200 };

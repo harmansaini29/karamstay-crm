@@ -193,7 +193,18 @@ export const StaffTabNavigator: React.FC = () => {
 
       {/* Finance tab: owner/accountant/manager only — hidden for staff */}
       {!isStaff && (
-        <Tab.Screen name="Finance" component={FinanceStack} />
+        <Tab.Screen
+          name="Finance"
+          component={FinanceStack}
+          options={{
+            popToTopOnBlur: true,
+          }}
+          listeners={({ navigation }) => ({
+            tabPress: () => {
+              navigation.navigate('Finance', { screen: 'FinanceHome' });
+            },
+          })}
+        />
       )}
 
       {/* Staff users get Agreement Vault instead of Finance */}

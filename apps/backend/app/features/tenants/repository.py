@@ -45,7 +45,15 @@ class TenantRepository:
             if found is not None:
                 return found
             stmt_like = select(Tenant).where(Tenant.phone.like(f"%{last10}"), Tenant.deleted_at.is_(None))
-            return self.db.scalar(stmt_like)
+            found_like = self.db.scalar(stmt_like)
+            if found_like is not None:
+                return found_like
+
+            all_tenants = self.db.scalars(select(Tenant).where(Tenant.deleted_at.is_(None))).all()
+            for t in all_tenants:
+                t_digits = "".join(c for c in t.phone if c.isdigit())
+                if t_digits and t_digits[-10:] == last10:
+                    return t
         return None
 
     def get_tenant_by_user_id(self, user_id: int) -> Tenant | None:

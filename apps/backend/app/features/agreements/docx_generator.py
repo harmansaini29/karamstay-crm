@@ -376,6 +376,18 @@ def build_agreement_pdf(
     temp_files: list[str] = []
 
     def _write_temp_img(raw: bytes, ext: str = "jpg") -> str:
+        try:
+            from PIL import Image as PILImage
+
+            img = PILImage.open(io.BytesIO(raw))
+            if img.mode in ("RGBA", "LA", "P"):
+                img = img.convert("RGB")
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                img.save(tmp, format="JPEG", quality=90)
+                temp_files.append(tmp.name)
+                return tmp.name
+        except Exception:
+            pass
         with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
             tmp.write(raw)
             temp_files.append(tmp.name)
@@ -566,6 +578,12 @@ def build_agreement_pdf(
                     logger.warning("Could not embed exhibit %s in PDF: %s", label, e)
                     pdf.cell(0, 10, clean(f"[Exhibit: {label}]"), ln=True, align="C")
 
+        try:
+            out = pdf.output()
+            if isinstance(out, bytes | bytearray):
+                return bytes(out)
+        except TypeError:
+            pass
         buf = io.BytesIO()
         pdf.output(buf)
         return buf.getvalue()

@@ -131,10 +131,11 @@ export const StaffManagementScreen: React.FC<{ navigation: any }> = ({ navigatio
 
   const handleCreate = () => {
     if (!validate()) return;
+    const cleanPhone = formPhone.trim().replace(/[\s\-\(\)]/g, '');
     createMutation.mutate({
       name: formName.trim(),
       email: formEmail.trim().toLowerCase(),
-      phone: formPhone.trim(),
+      phone: cleanPhone,
       // Password is sent to backend; never stored or displayed in state beyond this call
       password: formPassword,
     });
@@ -342,7 +343,11 @@ export const StaffManagementScreen: React.FC<{ navigation: any }> = ({ navigatio
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false}>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={{ paddingBottom: 24 }}
+                >
                   {/* Role badge — locked */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, padding: 10, borderRadius: 8, backgroundColor: colors.primary + '10', borderWidth: 1, borderColor: colors.primary + '30' }}>
                     <Ionicons name="lock-closed-outline" size={14} color={colors.primary} style={{ marginRight: 6 }} />

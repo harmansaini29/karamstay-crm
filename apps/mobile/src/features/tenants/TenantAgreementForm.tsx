@@ -322,7 +322,10 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
             <View style={{ width: 50 }} />
           </View>
 
-          <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }}>
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding + 40 }}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Template banner */}
             <Card style={{ borderWidth: 1, marginBottom: space.md, flexDirection: 'row', alignItems: 'center', padding: 12 }}>
               <Ionicons name="document-text-outline" size={22} color={colors.primary} style={{ marginRight: 10 }} />

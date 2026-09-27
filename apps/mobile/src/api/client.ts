@@ -39,7 +39,7 @@ const rawClient = axios.create({
 const tenancyCache = new Map<number, any>();
 
 // Helper to set headers on rawClient too
-const syncAuthHeaders = (token: string | null) => {
+export const syncAuthHeaders = (token: string | null) => {
   if (token) {
     apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     rawClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -63,15 +63,26 @@ apiClient.interceptors.request.use(
 
 // Response interceptor to handle token refresh
 let isRefreshing = false;
-let refreshSubscribers: ((token: string) => void)[] = [];
+let refreshSubscribers: {
+  resolve: (token: string) => void;
+  reject: (error: any) => void;
+}[] = [];
 
 const onRefreshed = (token: string) => {
-  refreshSubscribers.map((cb) => cb(token));
+  refreshSubscribers.forEach((sub) => sub.resolve(token));
   refreshSubscribers = [];
 };
 
-const addRefreshSubscriber = (cb: (token: string) => void) => {
-  refreshSubscribers.push(cb);
+const onRefreshFailed = (err: any) => {
+  refreshSubscribers.forEach((sub) => sub.reject(err));
+  refreshSubscribers = [];
+};
+
+const addRefreshSubscriber = (
+  resolve: (token: string) => void,
+  reject: (error: any) => void
+) => {
+  refreshSubscribers.push({ resolve, reject });
 };
 
 apiClient.interceptors.response.use(
@@ -80,16 +91,27 @@ apiClient.interceptors.response.use(
     if (USE_MOCK) return Promise.reject(error); // Skip refresh loops in mock mode
 
     const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
+    const reqUrl = originalRequest?.url || '';
+    const isAuthEndpoint =
+      reqUrl.includes('/auth/login') ||
+      reqUrl.includes('/auth/refresh') ||
+      reqUrl.includes('/auth/otp') ||
+      reqUrl.includes('/auth/logout');
 
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {
-        return new Promise((resolve) => {
-          addRefreshSubscriber((token: string) => {
-            if (originalRequest.headers) {
-              originalRequest.headers.Authorization = `Bearer ${token}`;
+        return new Promise((resolve, reject) => {
+          addRefreshSubscriber(
+            (token: string) => {
+              if (originalRequest.headers) {
+                originalRequest.headers.Authorization = `Bearer ${token}`;
+              }
+              resolve(apiClient(originalRequest));
+            },
+            (err: any) => {
+              reject(err);
             }
-            resolve(apiClient(originalRequest));
-          });
+          );
         });
       }
 
@@ -99,7 +121,12 @@ apiClient.interceptors.response.use(
       try {
         const refreshToken = await storage.getItem('refresh_token');
         if (!refreshToken) {
-          throw new Error('No refresh token available');
+          isRefreshing = false;
+          onRefreshFailed(error);
+          await storage.deleteItem('access_token');
+          await storage.deleteItem('refresh_token');
+          syncAuthHeaders(null);
+          return Promise.reject(error);
         }
 
         const response = await rawClient.post('/auth/refresh', { refresh_token: refreshToken });
@@ -118,11 +145,11 @@ apiClient.interceptors.response.use(
         return apiClient(originalRequest);
       } catch (refreshError) {
         isRefreshing = false;
-        refreshSubscribers = [];
+        onRefreshFailed(refreshError);
         await storage.deleteItem('access_token');
         await storage.deleteItem('refresh_token');
         syncAuthHeaders(null);
-        return Promise.reject(refreshError);
+        return Promise.reject(error);
       }
     }
 
@@ -136,10 +163,38 @@ export const parseApiError = (error: any): ApiError => {
     const status = error.response.status;
     const data = error.response.data;
 
+    let message = 'An error occurred';
+    if (typeof data?.detail === 'string') {
+      message = data.detail;
+    } else if (Array.isArray(data?.detail) && data.detail.length > 0) {
+      message = data.detail
+        .map((d: any) => {
+          const field = Array.isArray(d.loc)
+            ? d.loc.filter((l: any) => l !== 'body').join('.')
+            : '';
+          return field ? `${field}: ${d.msg || JSON.stringify(d)}` : d.msg || JSON.stringify(d);
+        })
+        .join('; ');
+    } else if (typeof data?.message === 'string') {
+      message = data.message;
+    } else if (typeof data?.error === 'string') {
+      message = data.error;
+    } else if (error.message) {
+      message = error.message;
+    }
+
     return {
-      code: data?.code || (status === 401 ? 'UNAUTHORIZED' : status === 403 ? 'FORBIDDEN' : status === 404 ? 'NOT_FOUND' : 'HTTP_ERROR'),
-      message: data?.message || error.message || 'An error occurred',
-      details: data?.details || null,
+      code:
+        data?.code ||
+        (status === 401
+          ? 'UNAUTHORIZED'
+          : status === 403
+          ? 'FORBIDDEN'
+          : status === 404
+          ? 'NOT_FOUND'
+          : 'HTTP_ERROR'),
+      message,
+      details: data?.details || data?.detail || null,
     };
   }
 

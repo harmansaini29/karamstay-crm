@@ -163,9 +163,9 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
   const navigateToLedger = (tenancyId: number) => {
     if (isStaff) return;
     try {
-      navigation.navigate('Finance', { screen: 'Ledger', params: { tenancyId } });
+      navigation.navigate('Finance', { screen: 'Ledger', params: { tenancyId }, initial: false });
     } catch (_) {
-      navigation.getParent()?.navigate('Finance', { screen: 'Ledger', params: { tenancyId } });
+      navigation.getParent()?.navigate('Finance', { screen: 'Ledger', params: { tenancyId }, initial: false });
     }
   };
 

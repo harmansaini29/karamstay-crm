@@ -1,7 +1,9 @@
+import re
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.security import hash_password
@@ -55,47 +57,83 @@ class StaffService:
         return results
 
     def create_staff(self, payload: StaffCreate) -> StaffResponse:
-        stmt = select(User).where(User.email == payload.email)
-        existing = self.db.scalars(stmt).first()
-        if existing and existing.deleted_at is None:
+        clean_email = payload.email.strip().lower()
+        clean_phone = re.sub(r"[\s\-\(\)]", "", payload.phone.strip())
+
+        stmt_email = select(User).where(User.email == clean_email)
+        existing_email = self.db.scalars(stmt_email).first()
+
+        stmt_phone = select(User).where(User.phone == clean_phone)
+        existing_phone = self.db.scalars(stmt_phone).first()
+
+        if existing_email and existing_email.deleted_at is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="A user with this email already exists",
             )
 
-        stmt_role = select(Role).where(Role.name == "manager")
-        role = self.db.scalars(stmt_role).first()
-        if not role:
-            stmt_role = select(Role).where(Role.name != "tenant")
-            role = self.db.scalars(stmt_role).first()
-
-        if not role:
+        if existing_phone and existing_phone.deleted_at is None:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Staff role not configured in system",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A user with this phone number already exists",
             )
 
-        new_user = User(
-            name=payload.name,
-            email=payload.email,
-            phone=payload.phone,
-            password_hash=hash_password(payload.password),
-            role_id=role.id,
-            is_active=True,
-        )
-        self.db.add(new_user)
-        self.db.flush()
+        if existing_email and existing_phone and existing_email.id != existing_phone.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Conflicting existing user records found for email and phone",
+            )
+
+        stmt_role = select(Role).where(Role.name == "staff")
+        role = self.db.scalars(stmt_role).first()
+        if not role:
+            role = Role(name="staff", description="Staff Portal Access")
+            self.db.add(role)
+            self.db.flush()
+
+        reusable_user = existing_email or existing_phone
+        if reusable_user and reusable_user.deleted_at is not None:
+            # Reactivate soft-deleted user
+            user = reusable_user
+            user.name = payload.name.strip()
+            user.email = clean_email
+            user.phone = clean_phone
+            user.password_hash = hash_password(payload.password)
+            user.role_id = role.id
+            user.is_active = True
+            user.deleted_at = None
+        else:
+            user = User(
+                name=payload.name.strip(),
+                email=clean_email,
+                phone=clean_phone,
+                password_hash=hash_password(payload.password),
+                role_id=role.id,
+                is_active=True,
+            )
+            self.db.add(user)
+            self.db.flush()
 
         assigned: list[int] = []
         if payload.assigned_properties:
+            del_stmt = delete(ManagerPropertyAssignment).where(ManagerPropertyAssignment.manager_id == user.id)
+            self.db.execute(del_stmt)
             for pid in payload.assigned_properties:
-                assignment = ManagerPropertyAssignment(manager_id=new_user.id, property_id=pid)
+                assignment = ManagerPropertyAssignment(manager_id=user.id, property_id=pid)
                 self.db.add(assignment)
                 assigned.append(pid)
 
-        self.db.commit()
-        self.db.refresh(new_user)
-        return self._to_response(new_user, assigned)
+        try:
+            self.db.commit()
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not create staff account due to duplicate or conflicting user data",
+            ) from exc
+
+        self.db.refresh(user)
+        return self._to_response(user, assigned)
 
     def update_staff(self, staff_id: int, payload: StaffUpdate) -> StaffResponse:
         stmt = select(User).options(joinedload(User.role)).where(User.id == staff_id, User.deleted_at.is_(None))

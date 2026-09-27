@@ -1,5 +1,6 @@
 import base64
 import logging
+import os
 import re
 
 from fastapi import HTTPException, status
@@ -354,14 +355,32 @@ class AgreementService:
         if agreement is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement not found")
 
-        s3_key = f"offline_uploads/ag_{agreement_id}_{payload.upload_type}_{payload.file_name}"
+        name, ext = os.path.splitext(payload.file_name or "document.jpg")
+        safe_name = f"{_sanitize_slug(name)}{ext.lower() if ext else '.jpg'}"
+        s3_key = f"offline_uploads/ag_{agreement_id}_{payload.upload_type}_{safe_name}"
         file_url = None
         if payload.file_base64:
-            b64 = payload.file_base64
+            b64 = payload.file_base64.strip()
             if "," in b64:
-                b64 = b64.split(",", 1)[1]
-            raw = base64.b64decode(b64)
-            self.storage.upload_bytes(key=s3_key, data=raw, content_type="image/jpeg")
+                b64 = b64.split(",", 1)[1].strip()
+            missing_padding = len(b64) % 4
+            if missing_padding:
+                b64 += "=" * (4 - missing_padding)
+            try:
+                raw = base64.b64decode(b64)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid base64 document content: {str(e)}",
+                ) from e
+            content_type = (
+                "application/pdf"
+                if ext.lower() == ".pdf"
+                else "image/png"
+                if ext.lower() == ".png"
+                else "image/jpeg"
+            )
+            self.storage.upload_bytes(key=s3_key, data=raw, content_type=content_type)
             file_url = self.storage.presign_download(key=s3_key)
 
         upload = AgreementOfflineUpload(
@@ -590,7 +609,9 @@ class AgreementService:
 
         # 6. Offline uploads (stamp paper, police NOC, notary stamp)
         for upload in agreement.offline_uploads:
-            dest_key = f"{s3_folder}/{upload.upload_type}_{upload.id}_{upload.file_name}"
+            name, ext = os.path.splitext(upload.file_name or "document.jpg")
+            safe_name = f"{_sanitize_slug(name)}{ext.lower() if ext else '.jpg'}"
+            dest_key = f"{s3_folder}/{upload.upload_type}_{upload.id}_{safe_name}"
             upload_data = self.storage.get_bytes(key=upload.s3_key) if upload.s3_key else None
             if upload_data:
                 self.storage.upload_bytes(key=dest_key, data=upload_data, content_type="image/jpeg")

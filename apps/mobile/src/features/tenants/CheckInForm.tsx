@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -124,7 +124,8 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
     if (passedUnitId) setSelectedUnitId(String(passedUnitId));
     if (passedRent !== undefined) setRent(String(passedRent));
     if (passedDeposit !== undefined) setDeposit(String(passedDeposit));
-  }, [passedPropId, passedUnitId, passedRent, passedDeposit]);
+    if (passedBedIds && passedBedIds.length > 0) setBedIds(passedBedIds);
+  }, [passedPropId, passedUnitId, passedRent, passedDeposit, passedBedIds]);
 
   // Sync pre-supplied params on initial load only
   useEffect(() => {
@@ -262,7 +263,8 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
-      <ResponsiveContainer>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ResponsiveContainer>
       <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
 
       <View style={styles.header}>
@@ -276,7 +278,7 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding + 40 }} keyboardShouldPersistTaps="handled">
 
         {/* Tenant selector — hidden when tenantId is pre-supplied */}
         {!tenantId && (
@@ -493,7 +495,8 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
         />
       </ScrollView>
 
-      </ResponsiveContainer>
+        </ResponsiveContainer>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

@@ -255,12 +255,13 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
-  const handleOfflineUpload = async () => {
+  const handleOfflineUpload = async (targetType?: OfflineUpload['upload_type']) => {
     if (!agreement) return;
+    const typeToUpload = targetType || uploadType;
     if (isPickingRef.current) return;
     isPickingRef.current = true;
 
-    Alert.alert('Add Offline Document', 'Choose source', [
+    Alert.alert('Add Offline Document', 'Choose document source', [
       {
         text: 'Camera',
         onPress: async () => {
@@ -272,22 +273,24 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
             }
             const result = await ImagePicker.launchCameraAsync({
               mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              quality: 0.85,
-              allowsEditing: true,
+              quality: 0.7,
+              allowsEditing: false,
               base64: true,
             });
             if (!result.canceled && result.assets?.length) {
-              const fileName = result.assets[0].fileName ?? `${uploadType}_${Date.now()}.jpg`;
+              const asset = result.assets[0];
+              const fileName = asset.fileName ?? `${typeToUpload}_${Date.now()}.jpg`;
               uploadMutation.mutate({
                 agId: agreement.id,
-                upload_type: uploadType,
+                upload_type: typeToUpload,
                 file_name: fileName,
-                file_base64: result.assets[0].base64 || undefined,
+                file_base64: asset.base64 || undefined,
               });
             }
+          } catch (e: any) {
+            Alert.alert('Error', e?.message || 'Could not access camera');
           } finally {
             isPickingRef.current = false;
-            setUploadModalVisible(false);
           }
         },
       },
@@ -302,24 +305,24 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
             }
             const result = await ImagePicker.launchImageLibraryAsync({
               mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              quality: 0.85,
-              allowsEditing: true,
+              quality: 0.7,
+              allowsEditing: false,
               base64: true,
             });
             if (!result.canceled && result.assets?.length) {
-              const fileName = result.assets[0].fileName ?? `${uploadType}_${Date.now()}.jpg`;
+              const asset = result.assets[0];
+              const fileName = asset.fileName ?? `${typeToUpload}_${Date.now()}.jpg`;
               uploadMutation.mutate({
                 agId: agreement.id,
-                upload_type: uploadType,
+                upload_type: typeToUpload,
                 file_name: fileName,
-                file_base64: result.assets[0].base64 || undefined,
+                file_base64: asset.base64 || undefined,
               });
             }
           } catch (e: any) {
             Alert.alert('Error', e?.message || 'Could not open picker');
           } finally {
             isPickingRef.current = false;
-            setUploadModalVisible(false);
           }
         },
       },
@@ -328,7 +331,6 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
         style: 'cancel',
         onPress: () => {
           isPickingRef.current = false;
-          setUploadModalVisible(false);
         },
       },
     ]);
@@ -521,22 +523,57 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
 
   const renderOfflineUploads = () => (
     <Card style={{ borderWidth: 1, marginBottom: space.md }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
         <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
           Offline Verification Documents
         </Text>
         <TouchableOpacity
           onPress={() => setUploadModalVisible(true)}
-          style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 }}
+          activeOpacity={0.8}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: colors.primary,
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            borderRadius: 10,
+            gap: 8,
+            minHeight: 42,
+            shadowColor: colors.primary,
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4,
+            elevation: 3,
+          }}
         >
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>+ Add</Text>
+          <Ionicons name="add-circle" size={20} color="#fff" />
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14, letterSpacing: 0.3 }}>+ Add Document</Text>
         </TouchableOpacity>
       </View>
 
       {uploads.length === 0 ? (
-        <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
-          No offline documents uploaded yet. Add stamp paper photos, police verification, or notary stamps here.
-        </Text>
+        <View style={{ paddingVertical: space.md, alignItems: 'center' }}>
+          <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, textAlign: 'center', marginBottom: space.sm }}>
+            No offline documents uploaded yet. Add stamp paper photos, police verification, or notary stamps here.
+          </Text>
+          <TouchableOpacity
+            onPress={() => setUploadModalVisible(true)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: colors.primary,
+              backgroundColor: colors.primary + '10',
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 8,
+              gap: 6,
+            }}
+          >
+            <Ionicons name="cloud-upload-outline" size={16} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>Upload First Document</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         uploads.map((up) => (
           <TouchableOpacity key={up.id} onPress={() => setStatusModalUpload(up)} activeOpacity={0.75}>
@@ -682,7 +719,8 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
                   key={t.type}
                   onPress={() => {
                     setUploadType(t.type);
-                    handleOfflineUpload();
+                    setUploadModalVisible(false);
+                    handleOfflineUpload(t.type);
                   }}
                   style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}
                 >

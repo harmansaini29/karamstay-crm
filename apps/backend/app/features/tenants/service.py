@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -34,15 +35,52 @@ class TenantService:
         return self.repository.list_tenants(current_user.id, current_user.role.name)
 
     def create_tenant(self, payload: TenantCreate, current_user: User) -> Tenant:
-        if self.repository.get_tenant_by_phone(payload.phone) is not None:
+        clean_phone = re.sub(r"[\s\-\(\)]", "", payload.phone.strip())
+        if self.repository.get_tenant_by_phone(clean_phone) is not None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A tenant with this phone number already exists",
             )
+
+        stmt_user = select(User).where(User.phone == clean_phone)
+        existing_user = self.db.scalars(stmt_user).first()
+        if existing_user is not None:
+            existing_user.deleted_at = None
+            existing_user.is_active = True
+            user_id = existing_user.id
+        else:
+            user_id = None
+
+        if not user_id:
+            role_stmt = select(Role).where(Role.name == "tenant")
+            tenant_role = self.db.scalars(role_stmt).first()
+            if not tenant_role:
+                tenant_role = Role(name="tenant", description="Tenant self-service access")
+                self.db.add(tenant_role)
+                self.db.flush()
+
+            clean_email = payload.email.strip().lower() if payload.email else None
+            if clean_email:
+                email_user = self.db.scalar(select(User).where(User.email == clean_email))
+                if email_user:
+                    clean_email = None
+
+            new_user = User(
+                role_id=tenant_role.id,
+                name=payload.name.strip(),
+                phone=clean_phone,
+                email=clean_email,
+                is_active=True,
+            )
+            self.db.add(new_user)
+            self.db.flush()
+            user_id = new_user.id
+
         tenant = Tenant(
-            name=payload.name,
-            phone=payload.phone,
-            email=payload.email,
+            user_id=user_id,
+            name=payload.name.strip(),
+            phone=clean_phone,
+            email=payload.email.strip().lower() if payload.email else None,
             date_of_birth=payload.date_of_birth,
             occupation=payload.occupation,
             emergency_contact_name=payload.emergency_contact_name,
@@ -98,6 +136,11 @@ class TenantService:
 
     def get_my_profile(self, current_user: User) -> Tenant:
         tenant = self.repository.get_tenant_by_user_id(current_user.id)
+        if tenant is None and current_user.phone:
+            tenant = self.repository.get_tenant_by_phone(current_user.phone)
+            if tenant is not None:
+                tenant.user_id = current_user.id
+                self.db.commit()
         if tenant is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant profile not found")
         return tenant
@@ -105,6 +148,8 @@ class TenantService:
     def update_tenant(self, tenant_id: int, payload: TenantUpdate, current_user: User) -> Tenant:
         tenant = self.get_tenant_for_user(tenant_id, current_user)
         update_data = payload.model_dump(exclude_unset=True)
+        if "phone" in update_data and update_data["phone"]:
+            update_data["phone"] = re.sub(r"[\s\-\(\)]", "", str(update_data["phone"]).strip())
         for field, value in update_data.items():
             setattr(tenant, field, value)
         tenant.updated_by_id = current_user.id

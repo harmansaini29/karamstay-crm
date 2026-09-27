@@ -22,7 +22,7 @@ interface LedgerEntry {
 }
 
 export const LedgerView: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
-  const { tenancyId } = route.params;
+  const { tenancyId } = route.params || {};
   const { colors, font, space } = useTheme();
   const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
 
@@ -35,9 +35,11 @@ export const LedgerView: React.FC<{ route: any; navigation: any }> = ({ route, n
   } = useQuery<LedgerEntry[]>({
     queryKey: ['ledger', tenancyId],
     queryFn: async () => {
+      if (!tenancyId) return [];
       const res = await apiClient.get(`/ledger?tenancy_id=${tenancyId}`);
       return res.data;
     },
+    enabled: !!tenancyId,
   });
 
   if (isLoading) return <LoadingSkeleton variant="list" />;
@@ -105,18 +107,39 @@ export const LedgerView: React.FC<{ route: any; navigation: any }> = ({ route, n
     );
   };
 
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('FinanceHome');
+    }
+  };
+
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
       <ResponsiveContainer>
       <View style={styles.header}>
-        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={handleBack}>
           <Ionicons name="arrow-back" size={20} color={colors.primary} />
           <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Back</Text>
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h3.fontSize }]}>
           Ledger History
         </Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity
+          onPress={() => navigation.navigate('FinanceHome')}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: colors.primary + '18',
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 6,
+          }}
+        >
+          <Ionicons name="wallet-outline" size={14} color={colors.primary} style={{ marginRight: 4 }} />
+          <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Finance</Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList

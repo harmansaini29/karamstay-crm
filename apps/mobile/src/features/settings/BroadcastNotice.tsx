@@ -6,6 +6,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -116,56 +118,58 @@ export const BroadcastNotice: React.FC<{ navigation: any }> = ({ navigation }) =
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
-      <ResponsiveContainer>
-      <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
-      
-      <View style={styles.header}>
-        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={handleBack}>
-          <Ionicons name="arrow-back" size={20} color={colors.primary} />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ResponsiveContainer>
+        <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
+        
+        <View style={styles.header}>
+          <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={handleBack}>
+            <Ionicons name="arrow-back" size={20} color={colors.primary} />
 
-          <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Cancel</Text>
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h3.fontSize }]}>
-          Broadcast Notice
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
+            <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h3.fontSize }]}>
+            Broadcast Notice
+          </Text>
+          <View style={{ width: 40 }} />
+        </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }} keyboardShouldPersistTaps="handled">
-        <Input
-          label="Scope to Property"
-          value={selectedPropertyId}
-          onChangeText={setSelectedPropertyId}
-          type="select"
-          options={propertyOptions}
-          placeholder={isPropsLoading ? 'Loading properties...' : 'Select property scope...'}
-        />
+        <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding + 40 }} keyboardShouldPersistTaps="handled">
+          <Input
+            label="Scope to Property"
+            value={selectedPropertyId}
+            onChangeText={setSelectedPropertyId}
+            type="select"
+            options={propertyOptions}
+            placeholder={isPropsLoading ? 'Loading properties...' : 'Select property scope...'}
+          />
 
-        <Input
-          label="Notice Title"
-          value={title}
-          onChangeText={setTitle}
-          placeholder="e.g. Water Line Maintenance Interruption"
-          error={errors.title}
-        />
+          <Input
+            label="Notice Title"
+            value={title}
+            onChangeText={setTitle}
+            placeholder="e.g. Water Line Maintenance Interruption"
+            error={errors.title}
+          />
 
-        <Input
-          label="Detailed Message"
-          value={message}
-          onChangeText={setMessage}
-          placeholder="Write detailed announcements context here..."
-          error={errors.message}
-          style={{ height: 120 }}
-        />
+          <Input
+            label="Detailed Message"
+            value={message}
+            onChangeText={setMessage}
+            placeholder="Write detailed announcements context here..."
+            error={errors.message}
+            style={{ height: 120 }}
+          />
 
-        <Button
-          label="Broadcast Now"
-          onPress={handleSubmit}
-          loading={broadcastMutation.isPending}
-          style={{ marginTop: space.md }}
-        />
-      </ScrollView>
-      </ResponsiveContainer>
+          <Button
+            label="Broadcast Now"
+            onPress={handleSubmit}
+            loading={broadcastMutation.isPending}
+            style={{ marginTop: space.md }}
+          />
+        </ScrollView>
+        </ResponsiveContainer>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

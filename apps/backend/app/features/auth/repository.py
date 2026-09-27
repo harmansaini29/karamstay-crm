@@ -18,6 +18,45 @@ class AuthRepository:
         )
         return self.db.scalar(statement)
 
+    def get_user_by_phone(self, phone: str, include_deleted: bool = False) -> User | None:
+        clean_phone = phone.strip()
+        statement = (
+            select(User)
+            .options(selectinload(User.role))
+            .where(User.phone == clean_phone)
+        )
+        if not include_deleted:
+            statement = statement.where(User.deleted_at.is_(None))
+        user = self.db.scalar(statement)
+        if user is not None:
+            return user
+
+        digits = "".join(c for c in clean_phone if c.isdigit())
+        if len(digits) >= 10:
+            last10 = digits[-10:]
+            candidates = [last10, f"+91{last10}", f"91{last10}", f"0{last10}"]
+            cand_stmt = (
+                select(User)
+                .options(selectinload(User.role))
+                .where(User.phone.in_(candidates))
+            )
+            if not include_deleted:
+                cand_stmt = cand_stmt.where(User.deleted_at.is_(None))
+            cand_user = self.db.scalar(cand_stmt)
+            if cand_user is not None:
+                return cand_user
+
+            all_users_stmt = select(User).options(selectinload(User.role))
+            if not include_deleted:
+                all_users_stmt = all_users_stmt.where(User.deleted_at.is_(None))
+            all_users = self.db.scalars(all_users_stmt).all()
+            for u in all_users:
+                if u.phone:
+                    u_digits = "".join(c for c in u.phone if c.isdigit())
+                    if u_digits and u_digits[-10:] == last10:
+                        return u
+        return None
+
     def get_role_by_name(self, name: str) -> Role:
         role = self.db.scalar(select(Role).where(Role.name == name))
         assert role is not None, f"role {name} is not seeded"

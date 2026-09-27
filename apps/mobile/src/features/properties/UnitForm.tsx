@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import { apiClient, parseApiError } from '../../api/client';
@@ -195,7 +195,8 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
-      <ResponsiveContainer>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ResponsiveContainer>
       <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
 
       <View style={styles.header}>
@@ -209,7 +210,7 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding + 40 }} keyboardShouldPersistTaps="handled">
         <View style={styles.row}>
           <Input
             label="Unit Number"
@@ -339,7 +340,8 @@ export const UnitForm: React.FC<UnitFormProps> = ({ route, navigation }) => {
           style={{ marginTop: space.md }}
         />
       </ScrollView>
-      </ResponsiveContainer>
+        </ResponsiveContainer>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -116,7 +116,8 @@ export const CreateExpense: React.FC<{ navigation: any }> = ({ navigation }) => 
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
-      <ResponsiveContainer>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ResponsiveContainer>
       <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
       
       <View style={styles.header}>
@@ -130,7 +131,7 @@ export const CreateExpense: React.FC<{ navigation: any }> = ({ navigation }) => 
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding + 40 }} keyboardShouldPersistTaps="handled">
         <Input
           label="Select Property"
           value={selectedPropertyId}
@@ -184,7 +185,8 @@ export const CreateExpense: React.FC<{ navigation: any }> = ({ navigation }) => 
         />
       </ScrollView>
     
-      </ResponsiveContainer>
+        </ResponsiveContainer>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

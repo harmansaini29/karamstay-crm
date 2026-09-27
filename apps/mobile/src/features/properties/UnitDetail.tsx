@@ -69,7 +69,7 @@ interface BedGroupSectionProps {
   selectedBeds: number[];
   onToggle: (id: number) => void;
   onOccupiedTap: (id: number) => void;
-  onQuickAssign: (bedId: number) => void;
+  onAssignBed: (bedId: number) => void;
   isOwner: boolean;
   isManager: boolean;
   colors: any;
@@ -83,7 +83,7 @@ const BedGroupSection: React.FC<BedGroupSectionProps> = ({
   selectedBeds,
   onToggle,
   onOccupiedTap,
-  onQuickAssign,
+  onAssignBed,
   isOwner,
   isManager,
   colors,
@@ -191,13 +191,13 @@ const BedGroupSection: React.FC<BedGroupSectionProps> = ({
               </Text>
             </View>
 
-            {/* Quick Assign Action for Vacant Beds */}
+            {/* Assign Action for Vacant Beds (directly opens CheckInForm) */}
             {!isOccupied && (isOwner || isManager) ? (
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={(e) => {
                   e.stopPropagation?.();
-                  onQuickAssign(bed.id);
+                  onAssignBed(bed.id);
                 }}
                 style={[styles.quickAssignBtn, { borderColor: colors.primary, backgroundColor: colors.primary + '12' }]}
               >
@@ -230,11 +230,6 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
   const [selectedBeds, setSelectedBeds] = useState<number[]>([]);
   const [occupiedBedId, setOccupiedBedId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-
-  // Assign modal state
-  const [assignModalVisible, setAssignModalVisible] = useState(false);
-  const [assignTargetBedIds, setAssignTargetBedIds] = useState<number[]>([]);
-  const [assignSelectedTenantId, setAssignSelectedTenantId] = useState<number | null>(null);
 
   // ⚠️ All hooks before conditional returns (Rules of Hooks)
   const { maskAmount } = useFinancialMask();
@@ -338,28 +333,6 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
     queryClient.invalidateQueries({ queryKey: ['owner-inventory-units'] });
   };
 
-  // ── Bed assignment mutation (single & multi-bed atomic merge) ─────────────
-  const assignMutation = useMutation({
-    mutationFn: async ({ bedIds, tenantId }: { bedIds: number[]; tenantId: number }) => {
-      const res = await apiClient.post(`/units/${id}/beds/assign`, {
-        bed_ids: bedIds,
-        tenant_id: tenantId,
-      });
-      return res.data;
-    },
-    onSuccess: () => {
-      setSelectedBeds([]);
-      setAssignModalVisible(false);
-      setAssignTargetBedIds([]);
-      setAssignSelectedTenantId(null);
-      invalidateAllSync();
-      Alert.alert('Success', 'Bed(s) successfully assigned to tenant!');
-    },
-    onError: (err: any) => {
-      Alert.alert('Assignment Failed', parseApiError(err).message);
-    },
-  });
-
   // ── Vacate mutation (unassign bed & restore to vacant) ─────────────────────
   const vacateMutation = useMutation({
     mutationFn: async (bedIds: number[]) => {
@@ -403,12 +376,6 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
     setSelectedBeds((prev) =>
       prev.includes(bedId) ? prev.filter((bid) => bid !== bedId) : [...prev, bedId]
     );
-  };
-
-  const openQuickAssignModal = (targetIds: number[]) => {
-    setAssignTargetBedIds(targetIds);
-    setAssignSelectedTenantId(allTenants[0]?.id || null);
-    setAssignModalVisible(true);
   };
 
   const handleCheckInBeds = (targetIds: number[]) => {
@@ -632,7 +599,7 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
                         selectedBeds={selectedBeds}
                         onToggle={handleToggleBed}
                         onOccupiedTap={(bedId) => setOccupiedBedId(bedId)}
-                        onQuickAssign={(bedId) => openQuickAssignModal([bedId])}
+                        onAssignBed={(bedId) => handleCheckInBeds([bedId])}
                         isOwner={isOwner}
                         isManager={isManager}
                         colors={colors}
@@ -684,19 +651,10 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
                     </TouchableOpacity>
                   </View>
 
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <Button
-                      label={`Quick Assign (${selectedBeds.length})`}
-                      onPress={() => openQuickAssignModal(selectedBeds)}
-                      style={{ flex: 1 }}
-                    />
-                    <Button
-                      label="Full Check-In"
-                      variant="secondary"
-                      onPress={() => handleCheckInBeds(selectedBeds)}
-                      style={{ flex: 1 }}
-                    />
-                  </View>
+                  <Button
+                    label={`Check In Tenant (${selectedBeds.length} Bed${selectedBeds.length > 1 ? 's' : ''})`}
+                    onPress={() => handleCheckInBeds(selectedBeds)}
+                  />
                 </View>
               ) : null}
             </Card>
@@ -713,103 +671,7 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
         </ScrollView>
       </ResponsiveContainer>
 
-      {/* ── Quick Assign Modal ──────────────────────────────────────────────── */}
-      <Modal
-        visible={assignModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAssignModalVisible(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setAssignModalVisible(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={[styles.modalCard, { backgroundColor: colors.surface, borderRadius: radius.lg }]}>
-                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize, marginBottom: 4 }}>
-                  Assign Bed{assignTargetBedIds.length > 1 ? 's' : ''}
-                </Text>
-                <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginBottom: space.md }}>
-                  Assigning:{' '}
-                  {assignTargetBedIds
-                    .map((id) => beds.find((b) => b.id === id)?.bed_no || `#${id}`)
-                    .join(', ')}
-                </Text>
 
-                <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.body.fontSize, marginBottom: space.xs }}>
-                  Select Tenant
-                </Text>
-
-                <ScrollView style={{ maxHeight: 180, marginBottom: space.md }}>
-                  {allTenants.map((t) => {
-                    const isSelected = assignSelectedTenantId === t.id;
-                    return (
-                      <TouchableOpacity
-                        key={t.id}
-                        onPress={() => setAssignSelectedTenantId(t.id)}
-                        style={[
-                          styles.tenantSelectRow,
-                          {
-                            borderColor: isSelected ? colors.primary : colors.border,
-                            backgroundColor: isSelected ? colors.primary + '15' : colors.surfaceSoft,
-                          },
-                        ]}
-                      >
-                        <Ionicons
-                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
-                          size={16}
-                          color={isSelected ? colors.primary : colors.textMuted}
-                          style={{ marginRight: 8 }}
-                        />
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.body.fontSize }}>
-                            {t.name}
-                          </Text>
-                          <Text style={{ color: colors.textMuted, fontSize: 11 }}>{t.phone}</Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                  {allTenants.length === 0 ? (
-                    <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, paddingVertical: 12 }}>
-                      No tenants registered. Add tenants from the Tenants tab.
-                    </Text>
-                  ) : null}
-                </ScrollView>
-
-                <Button
-                  label={assignMutation.isPending ? 'Assigning...' : `Assign ${assignTargetBedIds.length} Bed${assignTargetBedIds.length > 1 ? 's' : ''}`}
-                  disabled={!assignSelectedTenantId || assignMutation.isPending}
-                  onPress={() => {
-                    if (assignSelectedTenantId) {
-                      assignMutation.mutate({
-                        bedIds: assignTargetBedIds,
-                        tenantId: assignSelectedTenantId,
-                      });
-                    }
-                  }}
-                  style={{ marginBottom: space.sm }}
-                />
-
-                <Button
-                  label="Open Full Check-In / Agreement"
-                  variant="secondary"
-                  onPress={() => {
-                    setAssignModalVisible(false);
-                    handleCheckInBeds(assignTargetBedIds);
-                  }}
-                  style={{ marginBottom: space.sm }}
-                />
-
-                <TouchableOpacity
-                  onPress={() => setAssignModalVisible(false)}
-                  style={[styles.modalCloseBtn, { borderColor: colors.border }]}
-                >
-                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.body.fontSize }}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
 
       {/* ── Occupied Bed Resident Info & Vacate Modal ──────────────────────── */}
       <Modal

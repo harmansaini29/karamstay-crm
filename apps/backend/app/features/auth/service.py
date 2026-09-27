@@ -18,7 +18,7 @@ from app.core.security import (
     utc_now,
     verify_password,
 )
-from app.features.auth.models import RefreshToken, User
+from app.features.auth.models import RefreshToken, Role, User
 from app.features.auth.repository import AuthRepository
 from app.features.auth.schemas import LoginRequest, TokenPairResponse
 from app.features.settings.keys import KEY_WHATSAPP_OTP_TEMPLATE, get_whatsapp_template
@@ -85,7 +85,10 @@ class AuthService:
         tenant = self.tenant_repository.get_tenant_by_phone(phone)
         if tenant is None:
             logger.info("OTP requested for unregistered phone %s", phone)
-            return None
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="This phone number is not registered as a tenant. Please contact your property manager.",
+            )
 
         canonical_phone = tenant.phone
         code = f"{secrets.randbelow(10**settings.otp_length):0{settings.otp_length}d}"
@@ -174,16 +177,46 @@ class AuthService:
         if tenant is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
 
+        user = None
         if tenant.user_id is not None:
             user = self.repository.get_user_by_id(tenant.user_id)
-            if user is None or not user.is_active:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+
+        if user is None:
+            user = self.repository.get_user_by_phone(tenant.phone, include_deleted=True)
+            if user is None and tenant.email:
+                user = self.repository.get_user_by_email(tenant.email)
+
+            if user is not None:
+                tenant.user_id = user.id
+                user.deleted_at = None
+                user.is_active = True
+            else:
+                role = self.repository.get_role_by_name("tenant")
+                if not role:
+                    role = Role(name="tenant", description="Tenant self-service access")
+                    self.db.add(role)
+                    self.db.flush()
+
+                clean_user_email = tenant.email.strip().lower() if tenant.email else None
+                if clean_user_email and self.repository.get_user_by_email(clean_user_email):
+                    clean_user_email = None
+
+                user = User(
+                    role_id=role.id,
+                    name=tenant.name,
+                    phone=tenant.phone,
+                    email=clean_user_email,
+                    is_active=True,
+                )
+                self.db.add(user)
+                self.db.flush()
+                tenant.user_id = user.id
         else:
-            role = self.repository.get_role_by_name("tenant")
-            user = User(role_id=role.id, name=tenant.name, phone=tenant.phone, is_active=True)
-            self.db.add(user)
-            self.db.flush()
-            tenant.user_id = user.id
+            if not user.is_active:
+                user.is_active = True
+
+        if not user.is_active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
 
         self.repository.record_login(user, now)
         response = self._issue_token_pair(user)

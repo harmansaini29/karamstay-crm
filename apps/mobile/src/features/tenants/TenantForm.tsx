@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -122,14 +122,16 @@ export const TenantForm: React.FC<TenantFormProps> = ({ route, navigation }) => 
       }
     }
 
+    const cleanPhone = phone.trim().replace(/[\s\-\(\)]/g, '');
+
     const payload: any = {
       name: name.trim(),
-      phone: phone.trim(),
+      phone: cleanPhone,
       email: email.trim() || null,
       date_of_birth: formattedDob,
       occupation: occupation.trim() || null,
       emergency_contact_name: emergencyName.trim() || null,
-      emergency_contact_phone: emergencyPhone.trim() || null,
+      emergency_contact_phone: emergencyPhone.trim() ? emergencyPhone.trim().replace(/[\s\-\(\)]/g, '') : null,
       owner_notes: ownerNotes.trim() || null,
     };
 
@@ -152,7 +154,11 @@ export const TenantForm: React.FC<TenantFormProps> = ({ route, navigation }) => 
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding + 40 }} keyboardShouldPersistTaps="handled">
         <Input
           label="Full Name"
           value={name}
@@ -231,6 +237,7 @@ export const TenantForm: React.FC<TenantFormProps> = ({ route, navigation }) => 
           style={{ marginTop: space.md }}
         />
       </ScrollView>
+      </KeyboardAvoidingView>
     
       </ResponsiveContainer>
     </SafeAreaView>

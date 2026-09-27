@@ -365,7 +365,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
         <ResponsiveContainer maxWidth={500}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1 }}
           >
             <ScrollView

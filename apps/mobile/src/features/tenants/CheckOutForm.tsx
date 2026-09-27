@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -169,21 +169,25 @@ export const CheckOutForm: React.FC<{ route: any; navigation: any }> = ({ route,
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
-      <ResponsiveContainer>
-        <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ResponsiveContainer>
+          <Toast message={toastMsg} visible={toastVisible} type={toastType} onDismiss={() => setToastVisible(false)} />
 
-        <View style={styles.header}>
-          <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={20} color={colors.primary} />
-            <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Cancel</Text>
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h3.fontSize }]}>
-            Tenancy Checkout
-          </Text>
-          <View style={{ width: 40 }} />
-        </View>
+          <View style={styles.header}>
+            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={20} color={colors.primary} />
+              <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: colors.text, fontSize: font.h3.fontSize }]}>
+              Tenancy Checkout
+            </Text>
+            <View style={{ width: 40 }} />
+          </View>
 
-        <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding }} keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding + 40 }} keyboardShouldPersistTaps="handled">
           <Input
             label="Move-out Date"
             value={moveOutDate}
@@ -254,6 +258,7 @@ export const CheckOutForm: React.FC<{ route: any; navigation: any }> = ({ route,
           />
         </ScrollView>
       </ResponsiveContainer>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

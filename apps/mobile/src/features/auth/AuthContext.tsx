@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { storage } from '../../utils/storage';
-import { apiClient, parseApiError } from '../../api/client';
+import { apiClient, parseApiError, syncAuthHeaders } from '../../api/client';
 import { jwtDecode } from 'jwt-decode';
 
 interface UserProfile {
@@ -89,6 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // Retrieve real profile from backend to hydrate
+        syncAuthHeaders(accessToken);
         await fetchProfile();
       }
     } catch (e) {
@@ -139,14 +140,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await apiClient.post('/auth/login', { email, password });
+      await storage.deleteItem('access_token');
+      await storage.deleteItem('refresh_token');
+      syncAuthHeaders(null);
+      const response = await apiClient.post('/auth/login', { email: email.trim(), password });
       const { access_token, refresh_token } = response.data;
       
       await storage.setItem('access_token', access_token);
       await storage.setItem('refresh_token', refresh_token);
+      syncAuthHeaders(access_token);
       
       await fetchProfile();
     } catch (err: any) {
+      await handleLogoutActions();
       throw parseApiError(err);
     }
   };
@@ -163,15 +169,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const verifyOtp = async (phone: string, code: string) => {
     try {
+      await storage.deleteItem('access_token');
+      await storage.deleteItem('refresh_token');
+      syncAuthHeaders(null);
       const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
       const response = await apiClient.post('/auth/otp/verify', { phone: cleanPhone, code: code.trim() });
       const { access_token, refresh_token } = response.data;
 
       await storage.setItem('access_token', access_token);
       await storage.setItem('refresh_token', refresh_token);
+      syncAuthHeaders(access_token);
 
       await fetchProfile();
     } catch (err: any) {
+      await handleLogoutActions();
       throw parseApiError(err);
     }
   };
@@ -179,6 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleLogoutActions = async () => {
     await storage.deleteItem('access_token');
     await storage.deleteItem('refresh_token');
+    syncAuthHeaders(null);
     setUser(null);
     setRole(null);
     setIsAuthenticated(false);
