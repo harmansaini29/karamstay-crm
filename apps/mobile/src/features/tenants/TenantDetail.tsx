@@ -142,9 +142,19 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
           'Not filled yet: The tenant has not filled or submitted the agreement details form yet.'
         );
       } else {
+        let docxFile = ag.docx_file_name;
+        if (!docxFile) {
+          try {
+            const compRes = await apiClient.post(`/agreements/${ag.id}/compile-docx`);
+            if (compRes.data?.docx_file_name) {
+              docxFile = compRes.data.docx_file_name;
+            }
+            await refetchTenantAgreements();
+          } catch {}
+        }
         Alert.alert(
           'Agreement Synced',
-          `Word agreement (.docx) is synced for this tenant.\nFile: ${ag.docx_file_name || 'agreement.docx'}`,
+          `Word agreement (.docx) is synced for this tenant.\nFile: ${docxFile || 'agreement.docx'}`,
           [
             {
               text: 'Open Workspace',
@@ -441,17 +451,29 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
                     paddingHorizontal: 8,
                     paddingVertical: 2,
                     borderRadius: 4,
-                    backgroundColor: isAgreementFilled ? '#ECFDF5' : '#FEF3C7',
+                    backgroundColor: isAgreementFilled
+                      ? activeAgreement?.docx_file_name
+                        ? '#ECFDF5'
+                        : '#EFF6FF'
+                      : '#FEF3C7',
                   }}
                 >
                   <Text
                     style={{
-                      color: isAgreementFilled ? '#065F46' : '#92400E',
+                      color: isAgreementFilled
+                        ? activeAgreement?.docx_file_name
+                          ? '#065F46'
+                          : '#1D4ED8'
+                        : '#92400E',
                       fontWeight: '700',
                       fontSize: 10,
                     }}
                   >
-                    {isAgreementFilled ? 'DOCX Synced' : 'Not Filled Yet'}
+                    {isAgreementFilled
+                      ? activeAgreement?.docx_file_name
+                        ? 'DOCX Synced'
+                        : 'Form Submitted'
+                      : 'Not Filled Yet'}
                   </Text>
                 </View>
               </View>
@@ -464,7 +486,11 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
                 <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: space.xs }}>
                   Synced: {activeAgreement.docx_file_name}
                 </Text>
-              ) : null}
+              ) : (
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: space.xs }}>
+                  Form submitted. Tap "Fetch Agreement" to compile and sync Word (.docx).
+                </Text>
+              )}
 
               <View style={[styles.buttonRow, { marginTop: space.xs }]}>
                 <Button

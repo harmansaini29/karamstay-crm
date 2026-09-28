@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { apiClient, parseApiError } from '../../api/client';
+import { apiClient, parseApiError, resolveStorageUrl } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
 import { color as semanticColor } from '../../theme/tokens';
 import { Card } from '../../components/Card';
@@ -70,12 +70,12 @@ export const TenantDocumentsScreen: React.FC<{ navigation?: any }> = ({ navigati
   const handleDownload = async (id: number) => {
     try {
       const downloadRes = await apiClient.get(`/documents/${id}/download`);
-      const { download_url } = downloadRes.data;
-      if (download_url) {
-        await WebBrowser.openBrowserAsync(download_url);
-      } else {
-        throw new Error('Download URL empty');
+      let downloadUrl = resolveStorageUrl(downloadRes.data?.download_url);
+      if (!downloadUrl) {
+        const baseURL = apiClient.defaults.baseURL || '';
+        downloadUrl = `${baseURL}/documents/${id}/file`;
       }
+      await WebBrowser.openBrowserAsync(downloadUrl);
     } catch (err: any) {
       Alert.alert('Download Failed', parseApiError(err).message || 'Unable to open file link');
     }

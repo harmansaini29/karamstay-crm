@@ -95,6 +95,32 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
     enabled: !isManager, // Avoid unauthorized calls for managers
   });
 
+  const { data: dashboardTenants = [], refetch: refetchDashboardTenants } = useQuery<any[]>({
+    queryKey: ['tenants'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/tenants');
+        return Array.isArray(res.data) ? res.data : [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: !isManager,
+  });
+
+  const { data: dashboardDocs = [], refetch: refetchDashboardDocs } = useQuery<any[]>({
+    queryKey: ['documents'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/documents');
+        return Array.isArray(res.data) ? res.data : [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: isStaff,
+  });
+
   // Manager-specific queries
   const {
     data: tickets = [],
@@ -209,7 +235,14 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
     if (isManager) {
       await Promise.all([refetchTickets(), refetchUnits(), refetchBeds(), refetchNotifications()]);
     } else {
-      await Promise.all([refetchAnalytics(), refetchOwnerUnits(), refetchOwnerBeds(), refetchNotifications()]);
+      await Promise.all([
+        refetchAnalytics(),
+        refetchOwnerUnits(),
+        refetchOwnerBeds(),
+        refetchNotifications(),
+        refetchDashboardTenants(),
+        refetchDashboardDocs(),
+      ]);
     }
     setRefreshing(false);
   };
@@ -269,36 +302,67 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
   const ownerVacantBeds = ownerBedsList.filter((b) => b.status === 'vacant').length;
   const ownerOccupiedBeds = ownerBedsList.filter((b) => b.status === 'occupied').length;
 
-  const statTiles = [
-    {
-      title: 'Occupancy',
-      value: ownerTotalBeds > 0 ? `${ownerOccupiedBeds}/${ownerTotalBeds} Beds` : '0/0 Beds',
-      icon: 'people-circle-sharp',
-      color: colors.primary,
-      onPress: () => navigation.navigate('Properties'),
-    },
-    {
-      title: 'Revenue (Month)',
-      value: maskAmount(analytics?.revenue_this_month || 0),
-      icon: 'cash-outline',
-      color: semanticColor.success.solid,
-      onPress: navigateToFinance,
-    },
-    {
-      title: 'Pending Dues',
-      value: maskAmount(analytics?.pending_dues_total || 0),
-      icon: 'alert-circle-outline',
-      color: semanticColor.warning.solid,
-      onPress: navigateToFinance,
-    },
-    {
-      title: 'Open Tickets',
-      value: String(analytics?.open_maintenance_tickets || 0),
-      icon: 'construct-outline',
-      color: semanticColor.error.solid,
-      onPress: () => navigation.navigate('More', { screen: 'Maintenance' }),
-    },
-  ];
+  const statTiles = isStaff
+    ? [
+        {
+          title: 'Bed Occupancy',
+          value: ownerTotalBeds > 0 ? `${ownerOccupiedBeds}/${ownerTotalBeds} Beds` : `${ownerOccupiedFlats} Units`,
+          icon: 'bed-outline',
+          color: colors.primary,
+          onPress: () => navigation.navigate('Properties'),
+        },
+        {
+          title: 'Active Tenants',
+          value: `${dashboardTenants.length} Tenants`,
+          icon: 'people-outline',
+          color: semanticColor.success.solid,
+          onPress: () => navigation.navigate('Tenants'),
+        },
+        {
+          title: 'Open Tickets',
+          value: String(analytics?.open_maintenance_tickets || 0),
+          icon: 'construct-outline',
+          color: semanticColor.error.solid,
+          onPress: () => navigation.navigate('More', { screen: 'Maintenance' }),
+        },
+        {
+          title: 'Legal Documents',
+          value: `${dashboardDocs.length} Docs`,
+          icon: 'document-text-outline',
+          color: '#8B5CF6',
+          onPress: () => navigation.navigate('AgreementVault'),
+        },
+      ]
+    : [
+        {
+          title: 'Occupancy',
+          value: ownerTotalBeds > 0 ? `${ownerOccupiedBeds}/${ownerTotalBeds} Beds` : '0/0 Beds',
+          icon: 'people-circle-sharp',
+          color: colors.primary,
+          onPress: () => navigation.navigate('Properties'),
+        },
+        {
+          title: 'Revenue (Month)',
+          value: maskAmount(analytics?.revenue_this_month || 0),
+          icon: 'cash-outline',
+          color: semanticColor.success.solid,
+          onPress: navigateToFinance,
+        },
+        {
+          title: 'Pending Dues',
+          value: maskAmount(analytics?.pending_dues_total || 0),
+          icon: 'alert-circle-outline',
+          color: semanticColor.warning.solid,
+          onPress: navigateToFinance,
+        },
+        {
+          title: 'Open Tickets',
+          value: String(analytics?.open_maintenance_tickets || 0),
+          icon: 'construct-outline',
+          color: semanticColor.error.solid,
+          onPress: () => navigation.navigate('More', { screen: 'Maintenance' }),
+        },
+      ];
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
@@ -313,7 +377,7 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
           <View style={styles.header}>
           <View>
             <Text style={[styles.welcomeText, { color: colors.textMuted, fontSize: font.caption.fontSize }]}>
-              {isManager ? 'MANAGER DASHBOARD' : 'KARAMSTAY OWNER'}
+              {isManager ? 'MANAGER DASHBOARD' : isStaff ? 'STAFF OPERATIONS PORTAL' : 'KARAMSTAY OWNER'}
             </Text>
             <Text style={[styles.title, { color: colors.text, fontSize: font.h1.fontSize }]}>
               Dashboard
@@ -542,42 +606,84 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
                     Check-in
                   </Text>
                 </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.quickActionItem, { width: quickActionWidth }]}
-                  onPress={navigateToFinance}
-                >
-                  <View style={[styles.actionIcon, { backgroundColor: semanticColor.success.solid }]}>
-                    <Ionicons name="receipt" size={20} color="#FFFFFF" />
-                  </View>
-                  <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
-                    Invoice
-                  </Text>
-                </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.quickActionItem, { width: quickActionWidth }]}
-                  onPress={navigateToFinance}
-                >
-                  <View style={[styles.actionIcon, { backgroundColor: semanticColor.warning.solid }]}>
-                    <Ionicons name="wallet" size={20} color="#FFFFFF" />
-                  </View>
-                  <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
-                    Expense
-                  </Text>
-                </TouchableOpacity>
+                {isStaff ? (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.quickActionItem, { width: quickActionWidth }]}
+                      onPress={() => navigation.navigate('Properties')}
+                    >
+                      <View style={[styles.actionIcon, { backgroundColor: semanticColor.success.solid }]}>
+                        <Ionicons name="bed" size={20} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
+                        Beds
+                      </Text>
+                    </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.quickActionItem, { width: quickActionWidth }]}
-                  onPress={() => navigation.navigate('Properties')}
-                >
-                  <View style={[styles.actionIcon, { backgroundColor: colors.primary }]}>
-                    <Ionicons name="business" size={20} color="#FFFFFF" />
-                  </View>
-                  <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
-                    Add Unit
-                  </Text>
-                </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.quickActionItem, { width: quickActionWidth }]}
+                      onPress={() => navigation.navigate('AgreementVault')}
+                    >
+                      <View style={[styles.actionIcon, { backgroundColor: '#8B5CF6' }]}>
+                        <Ionicons name="document-text" size={20} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
+                        Vault Docs
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.quickActionItem, { width: quickActionWidth }]}
+                      onPress={() => navigation.navigate('More', { screen: 'Maintenance' })}
+                    >
+                      <View style={[styles.actionIcon, { backgroundColor: semanticColor.error.solid }]}>
+                        <Ionicons name="construct" size={20} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
+                        Repairs
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.quickActionItem, { width: quickActionWidth }]}
+                      onPress={navigateToFinance}
+                    >
+                      <View style={[styles.actionIcon, { backgroundColor: semanticColor.success.solid }]}>
+                        <Ionicons name="receipt" size={20} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
+                        Invoice
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.quickActionItem, { width: quickActionWidth }]}
+                      onPress={navigateToFinance}
+                    >
+                      <View style={[styles.actionIcon, { backgroundColor: semanticColor.warning.solid }]}>
+                        <Ionicons name="wallet" size={20} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
+                        Expense
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.quickActionItem, { width: quickActionWidth }]}
+                      onPress={() => navigation.navigate('Properties')}
+                    >
+                      <View style={[styles.actionIcon, { backgroundColor: colors.primary }]}>
+                        <Ionicons name="business" size={20} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
+                        Add Unit
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             </Card>
           </View>

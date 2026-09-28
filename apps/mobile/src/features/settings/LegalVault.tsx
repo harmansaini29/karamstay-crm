@@ -49,6 +49,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
   const isStaff = user?.role?.name === 'staff';
   const isAuthorizedUploader = isOwner || isManager || isStaff;
   const isOwnerManager = isOwner || isManager;
+  const canVerifyDoc = isOwner || isManager || isStaff;
 
   const [isUploading, setIsUploading] = useState(false);
   const isPickingRef = useRef(false); // mutex: prevents concurrent picker sessions
@@ -185,10 +186,25 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
       let base64Content: string | null = null;
       try {
         base64Content = await FileSystem.readAsStringAsync(asset.uri, {
-          encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+          encoding: 'base64',
         });
       } catch {
-        // If local file reading fails, continue to attempt presigned upload
+        try {
+          const resp = await fetch(asset.uri);
+          const blob = await resp.blob();
+          base64Content = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const res = reader.result as string;
+              const b64 = res.includes(',') ? res.split(',')[1] : res;
+              resolve(b64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch {
+          // If local file reading fails, continue to attempt presigned upload
+        }
       }
 
       // 2. Request presigned upload URL from backend for the chosen tenant
@@ -519,7 +535,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
               style={{ marginBottom: space.sm }}
             />
 
-            {selectedDoc?.status === 'pending' && isOwnerManager ? (
+            {selectedDoc?.status === 'pending' && canVerifyDoc ? (
               <View style={styles.modalButtons}>
                 <Button
                   label="Reject"

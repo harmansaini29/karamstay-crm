@@ -117,6 +117,14 @@ export const TenantProfileScreen: React.FC = () => {
                     {tenancyContext.unit.building ? ` · ${tenancyContext.unit.building}` : ''}
                     {tenancyContext.unit.floor != null ? ` (Floor ${tenancyContext.unit.floor})` : ''}
                   </Text>
+                  {Array.isArray(tenancyContext.bed_ids) && tenancyContext.bed_ids.length > 0 ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                      <Ionicons name="bed-outline" size={13} color={colors.primary} style={{ marginRight: 4 }} />
+                      <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>
+                        Bed #{tenancyContext.bed_ids.join(', #')}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
                 <View
                   style={{

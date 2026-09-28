@@ -464,6 +464,13 @@ class AgreementService:
         if tenant is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant record not found")
 
+        form_data = agreement.form_data
+        if not form_data or not isinstance(form_data, dict) or not any(form_data.values()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Not filled yet: Tenant has not filled and submitted the agreement form details.",
+            )
+
         tenancy = self.tenant_repo.get_tenancy(agreement.tenancy_id)
         unit = self.prop_repo.get_unit(tenancy.unit_id) if tenancy else None
         property_ = self.prop_repo.get_property(unit.property_id) if unit else None
@@ -507,9 +514,12 @@ class AgreementService:
                 file_key=docx_dest_key,
                 file_name=f"Agreement_{agreement.template_name}.docx",
                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                uploaded_by_id=current_user.id,
                 status="approved",
                 status_updated_at=utc_now(),
                 status_updated_by_id=current_user.id,
+                created_by_id=current_user.id,
+                updated_by_id=current_user.id,
             )
         )
 
@@ -536,9 +546,12 @@ class AgreementService:
                 file_key=pdf_dest_key,
                 file_name=f"Agreement_{agreement.template_name}.pdf",
                 content_type="application/pdf",
+                uploaded_by_id=current_user.id,
                 status="approved",
                 status_updated_at=utc_now(),
                 status_updated_by_id=current_user.id,
+                created_by_id=current_user.id,
+                updated_by_id=current_user.id,
             )
         )
 
@@ -557,9 +570,12 @@ class AgreementService:
                         file_key=photo_dest_key,
                         file_name="Tenant Photograph",
                         content_type="image/jpeg",
+                        uploaded_by_id=current_user.id,
                         status="approved",
                         status_updated_at=utc_now(),
                         status_updated_by_id=current_user.id,
+                        created_by_id=current_user.id,
+                        updated_by_id=current_user.id,
                     )
                 )
 
@@ -578,9 +594,12 @@ class AgreementService:
                         file_key=aadhar_dest_key,
                         file_name="Aadhaar Card Proof",
                         content_type="image/jpeg",
+                        uploaded_by_id=current_user.id,
                         status="approved",
                         status_updated_at=utc_now(),
                         status_updated_by_id=current_user.id,
+                        created_by_id=current_user.id,
+                        updated_by_id=current_user.id,
                     )
                 )
 
@@ -599,9 +618,12 @@ class AgreementService:
                         file_key=sign_dest_key,
                         file_name="Tenant Signature",
                         content_type="image/png",
+                        uploaded_by_id=current_user.id,
                         status="approved",
                         status_updated_at=utc_now(),
                         status_updated_by_id=current_user.id,
+                        created_by_id=current_user.id,
+                        updated_by_id=current_user.id,
                     )
                 )
 

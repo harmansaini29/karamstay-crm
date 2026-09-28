@@ -138,8 +138,8 @@ export const TenantPaymentsScreen: React.FC<{ navigation: any }> = ({ navigation
   const handleLaunchUpi = async (app: 'gpay' | 'phonepe' | 'paytm' | 'generic') => {
     if (!selectedInvoice) return;
 
-    const pa = resolvePaymentUpiId();
-    const pn = resolvePayeeName();
+    const pa = encodeURIComponent(resolvePaymentUpiId());
+    const pn = encodeURIComponent(resolvePayeeName());
     const am = selectedInvoice.amount;
     const tn = encodeURIComponent(`Rent payment Inv #${selectedInvoice.id}`);
 

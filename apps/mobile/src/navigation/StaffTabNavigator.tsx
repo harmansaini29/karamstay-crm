@@ -188,8 +188,24 @@ export const StaffTabNavigator: React.FC = () => {
       })}
     >
       <Tab.Screen name="Dashboard" component={DashboardStack} />
-      <Tab.Screen name="Properties" component={PropertiesStack} />
-      <Tab.Screen name="Tenants" component={TenantsStack} />
+      <Tab.Screen
+        name="Properties"
+        component={PropertiesStack}
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            navigation.navigate('Properties', { screen: 'PropertiesList' });
+          },
+        })}
+      />
+      <Tab.Screen
+        name="Tenants"
+        component={TenantsStack}
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            navigation.navigate('Tenants', { screen: 'TenantsList' });
+          },
+        })}
+      />
 
       {/* Finance tab: owner/accountant/manager only — hidden for staff */}
       {!isStaff && (
@@ -198,9 +214,7 @@ export const StaffTabNavigator: React.FC = () => {
           component={FinanceStack}
           listeners={({ navigation }) => ({
             tabPress: () => {
-              if (navigation.isFocused()) {
-                navigation.navigate('Finance', { screen: 'FinanceHome' });
-              }
+              navigation.navigate('Finance', { screen: 'FinanceHome' });
             },
           })}
         />
@@ -212,6 +226,11 @@ export const StaffTabNavigator: React.FC = () => {
           name="AgreementVault"
           component={AgreementVaultStack}
           options={{ tabBarLabel: 'Agreements' }}
+          listeners={({ navigation }) => ({
+            tabPress: () => {
+              navigation.navigate('AgreementVault', { screen: 'LegalVault' });
+            },
+          })}
         />
       )}
 
@@ -220,9 +239,7 @@ export const StaffTabNavigator: React.FC = () => {
         component={MoreStack}
         listeners={({ navigation }) => ({
           tabPress: () => {
-            if (navigation.isFocused()) {
-              navigation.navigate('More', { screen: 'MoreHome' });
-            }
+            navigation.navigate('More', { screen: 'MoreHome' });
           },
         })}
       />

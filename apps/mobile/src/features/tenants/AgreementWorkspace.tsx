@@ -142,9 +142,19 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
           'Not filled yet: The tenant has not filled or submitted the agreement details form yet.'
         );
       } else {
+        let docxName = currentAg.docx_file_name;
+        if (!docxName) {
+          try {
+            const compRes = await apiClient.post(`/agreements/${currentAg.id}/compile-docx`);
+            if (compRes.data?.docx_file_name) {
+              docxName = compRes.data.docx_file_name;
+            }
+            await refetch();
+          } catch {}
+        }
         Alert.alert(
           'Agreement Synced',
-          `Word document (.docx) is synced and ready.\nFile: ${currentAg.docx_file_name || 'agreement.docx'}`
+          `Word document (.docx) is synced and ready.\nFile: ${docxName || 'agreement.docx'}`
         );
       }
     } catch (e: any) {
