@@ -42,13 +42,14 @@ EXTENSION_TO_MIME: dict[str, str] = {
 
 
 def sanitize_filename(name: str) -> str:
-    """Sanitize filename to prevent path traversal and shell injection."""
-    base = os.path.basename(name.strip())
-    # Replace dangerous or traversal characters
+    """Sanitize filename to prevent path traversal and shell injection across POSIX and Windows."""
+    cleaned = name.strip().replace("\\", "/")
+    base = cleaned.rsplit("/", 1)[-1]
     safe = re.sub(r"[^a-zA-Z0-9_\-\.]", "_", base)
-    # Remove consecutive periods to avoid directory traversal
     safe = re.sub(r"\.{2,}", ".", safe)
-    return safe or "document"
+    if not safe or set(safe).issubset({".", "_"}):
+        return "document"
+    return safe
 
 
 def infer_extension_from_mime(content_type: str | None) -> str:
@@ -126,7 +127,7 @@ def safe_b64decode(data_b64: str, max_bytes: int = MAX_DOCUMENT_BYTES) -> bytes:
     if len(raw_bytes) > max_bytes:
         max_mb = max_bytes // (1024 * 1024)
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=getattr(status, "HTTP_413_CONTENT_TOO_LARGE", 413),
             detail=f"File exceeds maximum allowed size of {max_mb}MB.",
         )
 

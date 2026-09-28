@@ -26,15 +26,25 @@ class PropertyService:
     def list_properties(self, current_user: User) -> list[Property]:
         props = self.repository.list_properties(current_user.id, current_user.role.name)
         for prop in props:
-            configured = get_configured_upi_for_property(property_name=prop.name, property_id=prop.id)
-            if prop.payment_upi_id != configured:
-                prop.payment_upi_id = configured
+            explicit_upi = get_configured_upi_for_property(
+                property_name=prop.name,
+                property_id=prop.id,
+                allow_default=False,
+            )
+            if explicit_upi and prop.payment_upi_id != explicit_upi:
+                prop.payment_upi_id = explicit_upi
+            elif not prop.payment_upi_id:
+                prop.payment_upi_id = get_configured_upi_for_property()
         return props
 
     def create_property(self, payload: PropertyCreate, current_user: User) -> Property:
-        # Authoritative in-code registry takes precedence to eliminate financial risk from in-app tampering
-        configured_upi = get_configured_upi_for_property(property_name=payload.name)
-        payment_upi_id = configured_upi or payload.payment_upi_id
+        # Authoritative in-code registry takes precedence for explicitly configured properties.
+        # If not explicitly in the registry, respect payload.payment_upi_id, falling back to default.
+        explicit_upi = get_configured_upi_for_property(
+            property_name=payload.name,
+            allow_default=False,
+        )
+        payment_upi_id = explicit_upi or payload.payment_upi_id or get_configured_upi_for_property()
         property = Property(
             owner_id=current_user.id,
             name=payload.name,
@@ -50,8 +60,12 @@ class PropertyService:
         self.repository.add_property(property)
         self.db.flush()
         # Ensure ID-specific in-code mapping if registered by numeric ID
-        id_configured = get_configured_upi_for_property(property_name=property.name, property_id=property.id)
-        if property.payment_upi_id != id_configured:
+        id_configured = get_configured_upi_for_property(
+            property_name=property.name,
+            property_id=property.id,
+            allow_default=False,
+        )
+        if id_configured and property.payment_upi_id != id_configured:
             property.payment_upi_id = id_configured
         self.audit.record(
             user_id=current_user.id,
@@ -72,9 +86,15 @@ class PropertyService:
             property_id,
         ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Property access denied")
-        configured = get_configured_upi_for_property(property_name=property.name, property_id=property.id)
-        if property.payment_upi_id != configured:
-            property.payment_upi_id = configured
+        explicit_upi = get_configured_upi_for_property(
+            property_name=property.name,
+            property_id=property.id,
+            allow_default=False,
+        )
+        if explicit_upi and property.payment_upi_id != explicit_upi:
+            property.payment_upi_id = explicit_upi
+        elif not property.payment_upi_id:
+            property.payment_upi_id = get_configured_upi_for_property()
         return property
 
     def update_property(
@@ -89,11 +109,16 @@ class PropertyService:
         update_data.pop("payment_upi_id", None)
         for field, value in update_data.items():
             setattr(property, field, value)
-        # Re-sync authoritative in-code UPI ID
-        property.payment_upi_id = get_configured_upi_for_property(
+        # Re-sync authoritative in-code UPI ID if explicitly configured; otherwise retain existing
+        explicit_upi = get_configured_upi_for_property(
             property_name=property.name,
             property_id=property.id,
+            allow_default=False,
         )
+        if explicit_upi:
+            property.payment_upi_id = explicit_upi
+        elif not property.payment_upi_id:
+            property.payment_upi_id = get_configured_upi_for_property()
         property.updated_by_id = current_user.id
         self.audit.record(
             user_id=current_user.id,

@@ -158,12 +158,19 @@ def test_get_configured_upi_for_property_precedence() -> None:
 
 
 def test_register_property_payment_override() -> None:
-    register_property_payment_override("Test Custom Villa", "custom.villa@okhdfcbank")
-    assert get_configured_upi_for_property(property_name="Test Custom Villa") == "custom.villa@okhdfcbank"
+    try:
+        register_property_payment_override("Test Custom Villa", "custom.villa@okhdfcbank")
+        assert get_configured_upi_for_property(property_name="Test Custom Villa") == "custom.villa@okhdfcbank"
 
-    # Numeric ID override
-    register_property_payment_override(9999, "id9999@okicici")
-    assert get_configured_upi_for_property(property_id=9999) == "id9999@okicici"
+        # Numeric ID override
+        register_property_payment_override(9999, "id9999@okicici")
+        assert get_configured_upi_for_property(property_id=9999) == "id9999@okicici"
+
+        # Test allow_default=False
+        assert get_configured_upi_for_property(property_name="Unlisted Property XYZ", allow_default=False) is None
+    finally:
+        PROPERTY_PAYMENT_REGISTRY.pop("Test Custom Villa", None)
+        PROPERTY_PAYMENT_REGISTRY.pop(9999, None)
 
 
 def test_sync_property_payment_ids_to_db_updates_stale_properties() -> None:

@@ -56,21 +56,21 @@ def _normalize_key(key: str) -> str:
 def get_configured_upi_for_property(
     property_name: str | None = None,
     property_id: int | None = None,
-) -> str:
+    allow_default: bool = True,
+) -> str | None:
     """Resolve the authoritative UPI / GPay ID for a property from the in-code registry.
 
     Resolution precedence:
       1. Explicit integer property_id in registry
       2. Exact or case-insensitive property_name match
-      3. Registry 'default' value
-      4. Hardcoded fallback 'karamstay@okhdfcbank'
+      3. Registry 'default' value (if allow_default=True)
+      4. Hardcoded fallback 'karamstay@okhdfcbank' (if allow_default=True)
     """
     if property_id is not None:
         if property_id in PROPERTY_PAYMENT_REGISTRY:
             return PROPERTY_PAYMENT_REGISTRY[property_id]
         if str(property_id) in PROPERTY_PAYMENT_REGISTRY:
             return PROPERTY_PAYMENT_REGISTRY[str(property_id)]
-
 
     if property_name:
         # Check exact name match
@@ -83,6 +83,9 @@ def get_configured_upi_for_property(
             if isinstance(reg_key, str) and reg_key != "default":
                 if _normalize_key(reg_key) == norm_name:
                     return upi
+
+    if not allow_default:
+        return None
 
     return PROPERTY_PAYMENT_REGISTRY.get("default", "karamstay@okhdfcbank")
 

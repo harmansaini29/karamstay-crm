@@ -171,9 +171,22 @@ class LocalStorage:
         return f"/api/v1/storage/file?key={key}&action=get&expires_in={ttl}"
 
     def _resolve_path(self, key: str) -> Path | None:
-        clean_key = key.lstrip("/\\").replace("\\", "/")
+        if not key:
+            return None
+        # Disallow absolute paths, leading slashes/backslashes, and Windows drive prefixes
+        if key.startswith(("/", "\\")) or (len(key) >= 2 and key[1] == ":") or Path(key).is_absolute():
+            logger.warning("Invalid or absolute path key detected: %s", key)
+            return None
+
+        # Check for directory traversal sequences
+        normalized = key.replace("\\", "/")
+        parts = normalized.split("/")
+        if any(part == ".." for part in parts):
+            logger.warning("Path traversal attempt detected for key: %s", key)
+            return None
+
         try:
-            full_path = (self._storage_dir / clean_key).resolve()
+            full_path = (self._storage_dir / normalized).resolve()
             full_path.relative_to(self._storage_dir.resolve())
             return full_path
         except (ValueError, Exception):
