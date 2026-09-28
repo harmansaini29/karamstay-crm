@@ -59,26 +59,10 @@ class AgreementService:
             tenant = self.tenant_repo.get_tenant_by_user_id(current_user.id)
             if tenant is None:
                 return []
-            agreements = self.repo.list_agreements(tenant_id=tenant.id, tenancy_id=tenancy_id)
-            if not agreements:
-                # If tenant has an active tenancy, ensure an Agreement exists immediately
-                tenancy = self.tenant_repo.get_active_tenancy_for_tenant(tenant.id)
-                if tenancy:
-                    auto_ag = Agreement(
-                        tenancy_id=tenancy.id,
-                        tenant_id=tenant.id,
-                        template_id="A",
-                        template_name="Standard Agreement",
-                        status="form_submitted",
-                        tracker_stage=1,
-                        created_by_id=current_user.id,
-                        updated_by_id=current_user.id,
-                    )
-                    self.repo.add(auto_ag)
-                    self.db.commit()
-                    self.db.refresh(auto_ag)
-                    return [auto_ag]
-            return agreements
+            # Only return agreements that were explicitly created by the owner / manager.
+            # Never auto-create a dummy agreement — tenants will see the form only when
+            # the owner has initialized a real agreement record for them.
+            return self.repo.list_agreements(tenant_id=tenant.id, tenancy_id=tenancy_id)
         self._assert_access(current_user)
         return self.repo.list_agreements(tenant_id=tenant_id, tenancy_id=tenancy_id)
 
@@ -109,8 +93,10 @@ class AgreementService:
             tenant_id=payload.tenant_id,
             template_id=payload.template_id,
             template_name=payload.template_name,
-            status="form_submitted",
-            tracker_stage=1,
+            # Stage 0 = initialized by owner, waiting for tenant to fill form.
+            # Stage 1 is reached only after tenant submits via submit-kyc endpoint.
+            status="pending_tenant_fill",
+            tracker_stage=0,
             created_by_id=current_user.id,
             updated_by_id=current_user.id,
         )

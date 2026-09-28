@@ -49,7 +49,7 @@ interface Agreement {
   tenant_id: number;
   template_id: 'A' | 'B' | 'C';
   template_name: string;
-  status: 'form_submitted' | 'docx_generated' | 'offline_pending' | 'approved';
+  status: 'pending_tenant_fill' | 'form_submitted' | 'docx_generated' | 'offline_pending' | 'approved';
   form_data: Record<string, string>;
   docx_file_name: string | null;
   docx_generated_at: string | null;
@@ -63,7 +63,7 @@ interface Agreement {
   pdf_download_url?: string | null;
   s3_folder_path?: string | null;
   s3_archive_url?: string | null;
-  tracker_stage: 1 | 2 | 3 | 4;
+  tracker_stage: number;
   created_at: string;
 }
 
@@ -728,6 +728,21 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
                 loading={initAgreementMutation.isPending}
                 onPress={() => initAgreementMutation.mutate()}
               />
+            </Card>
+          ) : agreement.status === 'pending_tenant_fill' || agreement.tracker_stage === 0 ? (
+            <Card style={{ borderWidth: 1, padding: space.xl, alignItems: 'center' }}>
+              <Ionicons name="time-outline" size={48} color="#F59E0B" style={{ marginBottom: 12 }} />
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.h3.fontSize, textAlign: 'center', marginBottom: 6 }}>
+                Agreement Not Filled Yet
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: font.body.fontSize, textAlign: 'center', marginBottom: 8, lineHeight: 20 }}>
+                The rental agreement has been initialized and sent to this tenant. The tenant has not yet submitted their agreement form and KYC details.
+              </Text>
+              <View style={{ backgroundColor: '#FEF3C7', borderRadius: 8, padding: 12, width: '100%', marginTop: 8 }}>
+                <Text style={{ color: '#92400E', fontSize: font.caption.fontSize, textAlign: 'center', fontWeight: '600' }}>
+                  Waiting for tenant to fill the form…
+                </Text>
+              </View>
             </Card>
           ) : (
             <>

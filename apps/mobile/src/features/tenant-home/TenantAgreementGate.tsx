@@ -65,12 +65,18 @@ export const TenantAgreementGate: React.FC<{ navigation: any }> = ({ navigation 
   useEffect(() => {
     if (isLoading) return;
 
-    const pending = agreements.find(
-      (a) => !a.tracker_stage || (a.tracker_stage <= 1 && a.status !== 'docx_generated' && a.status !== 'approved')
+    // Only redirect to form if the owner has actually initialized an agreement record
+    // AND the tenant hasn't filled the form yet (tracker_stage < 1 or no form_data).
+    // If no agreements at all → go to Dashboard (owner hasn't set it up yet).
+    const needsFilling = agreements.find(
+      (a) =>
+        (a.tracker_stage === 0 || !a.tracker_stage) &&
+        a.status !== 'docx_generated' &&
+        a.status !== 'approved'
     );
 
-    if (pending) {
-      navigation.replace('TenantAgreementFormScreen', { agreementId: pending.id });
+    if (needsFilling) {
+      navigation.replace('TenantAgreementFormScreen', { agreementId: needsFilling.id });
     } else {
       navigation.replace('TenantDashboard');
     }
