@@ -62,15 +62,12 @@ def get_configured_upi_for_property(
     """Resolve the authoritative UPI / GPay ID for a property.
 
     Resolution precedence:
-      1. db_upi_id: Explicit UPI ID configured/saved in database by owner (highest precedence)
-      2. Explicit integer property_id in in-code registry
-      3. Exact or case-insensitive property_name match in in-code registry
+      1. Explicit integer property_id in in-code registry
+      2. Exact or case-insensitive property_name match in in-code registry
+      3. db_upi_id: Explicit UPI ID configured/saved in database (if property not explicitly in registry)
       4. Registry 'default' value (if allow_default=True)
       5. Hardcoded fallback 'karamstay@okhdfcbank' (if allow_default=True)
     """
-    if db_upi_id and db_upi_id.strip():
-        return db_upi_id.strip()
-
     if property_id is not None:
         if property_id in PROPERTY_PAYMENT_REGISTRY:
             return PROPERTY_PAYMENT_REGISTRY[property_id]
@@ -89,6 +86,9 @@ def get_configured_upi_for_property(
                 if _normalize_key(reg_key) == norm_name:
                     return upi
 
+    if db_upi_id and db_upi_id.strip():
+        return db_upi_id.strip()
+
     if not allow_default:
         return None
 
@@ -102,9 +102,11 @@ def register_property_payment_override(identifier: str | int, upi_id: str) -> No
 
 
 def sync_property_payment_ids_to_db(db: Session) -> dict[str, Any]:
-    """Synchronize database properties with default UPI configuration.
+    """Synchronize all database properties with the authoritative in-code UPI registry.
 
-    Never overwrites a UPI ID that has already been entered/customized by the owner.
+    Updates property payment_upi_id in the database whenever an entry in
+    PROPERTY_PAYMENT_REGISTRY matches the property by ID or name and differs
+    from the current DB state, or when a property has no UPI ID set.
     """
     from app.features.properties.models import Property
 
@@ -114,31 +116,31 @@ def sync_property_payment_ids_to_db(db: Session) -> dict[str, Any]:
     updated_properties: list[dict[str, Any]] = []
 
     for prop in properties:
-        # If the owner has already entered a UPI ID on this property, preserve it!
-        if prop.payment_upi_id and prop.payment_upi_id.strip():
-            continue
-
         configured_upi = get_configured_upi_for_property(property_name=prop.name, property_id=prop.id)
-        if configured_upi:
+        current_upi = prop.payment_upi_id
+
+        # Update if not set or if different from authoritative in-code configuration
+        if current_upi != configured_upi:
             prop.payment_upi_id = configured_upi
             updated_properties.append({
                 "property_id": prop.id,
                 "property_name": prop.name,
-                "old_upi_id": None,
+                "old_upi_id": current_upi,
                 "new_upi_id": configured_upi,
             })
             logger.info(
-                "Defaulted Property #%d (%s) UPI ID to '%s'",
+                "Updated Property #%d (%s) UPI ID from '%s' to '%s'",
                 prop.id,
                 prop.name,
+                current_upi,
                 configured_upi,
             )
 
     if updated_properties:
         db.commit()
-        logger.info("Successfully populated UPI IDs for %d properties", len(updated_properties))
+        logger.info("Successfully synced %d properties with in-code UPI registry", len(updated_properties))
     else:
-        logger.debug("All %d properties already have active UPI IDs", len(properties))
+        logger.debug("All %d properties are already up-to-date with in-code UPI registry", len(properties))
 
     return {
         "total_properties": len(properties),
