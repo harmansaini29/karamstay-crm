@@ -386,7 +386,15 @@ class TenantService:
                 "property_id": unit.property_id,
                 "property_name": property_.name if property_ is not None else "",
                 "payment_upi_id": (
-                    get_configured_upi_for_property(property_name=property_.name, property_id=property_.id)
+                    (
+                        property_.payment_upi_id.strip()
+                        if property_.payment_upi_id and property_.payment_upi_id.strip()
+                        else get_configured_upi_for_property(
+                            property_name=property_.name,
+                            property_id=property_.id,
+                            db_upi_id=property_.payment_upi_id,
+                        )
+                    )
                     if property_ is not None
                     else None
                 ),

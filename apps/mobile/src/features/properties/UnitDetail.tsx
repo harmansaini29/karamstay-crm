@@ -70,8 +70,7 @@ interface BedGroupSectionProps {
   onToggle: (id: number) => void;
   onOccupiedTap: (id: number) => void;
   onAssignBed: (bedId: number) => void;
-  isOwner: boolean;
-  isManager: boolean;
+  canManage: boolean;
   colors: any;
   font: any;
   space: any;
@@ -84,8 +83,7 @@ const BedGroupSection: React.FC<BedGroupSectionProps> = ({
   onToggle,
   onOccupiedTap,
   onAssignBed,
-  isOwner,
-  isManager,
+  canManage,
   colors,
   font,
   space,
@@ -108,7 +106,7 @@ const BedGroupSection: React.FC<BedGroupSectionProps> = ({
       {beds.map((bed) => {
         const isSelected = selectedBeds.includes(bed.id);
         const isOccupied = bed.status === 'occupied';
-        const canSelect = (isOwner || isManager) && !isOccupied;
+        const canSelect = canManage && !isOccupied;
 
         return (
           <TouchableOpacity
@@ -138,7 +136,7 @@ const BedGroupSection: React.FC<BedGroupSectionProps> = ({
             ]}
           >
             {/* Selection checkbox */}
-            {(isOwner || isManager) && !isOccupied ? (
+            {canSelect ? (
               <TouchableOpacity
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 onPress={() => onToggle(bed.id)}
@@ -152,9 +150,7 @@ const BedGroupSection: React.FC<BedGroupSectionProps> = ({
               >
                 {isSelected && <Ionicons name="checkmark" size={12} color="#fff" />}
               </TouchableOpacity>
-            ) : (
-              <View style={[styles.checkbox, { borderColor: 'transparent' }]} />
-            )}
+            ) : null}
 
             {/* Bed label */}
             <View style={{ flex: 1 }}>
@@ -192,7 +188,7 @@ const BedGroupSection: React.FC<BedGroupSectionProps> = ({
             </View>
 
             {/* Assign Action for Vacant Beds (directly opens CheckInForm) */}
-            {!isOccupied && (isOwner || isManager) ? (
+            {!isOccupied && canManage ? (
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={(e) => {
@@ -226,6 +222,8 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
   const queryClient = useQueryClient();
   const isOwner = user?.role?.name === 'owner';
   const isManager = user?.role?.name === 'manager';
+  const isStaff = user?.role?.name === 'staff';
+  const canManage = isOwner || isManager || isStaff;
 
   const [selectedBeds, setSelectedBeds] = useState<number[]>([]);
   const [occupiedBedId, setOccupiedBedId] = useState<number | null>(null);
@@ -276,7 +274,7 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
       const res = await apiClient.get('/tenants');
       return res.data;
     },
-    enabled: isOwner || isManager,
+    enabled: canManage,
   });
 
   // Build bedId → tenancy lookup
@@ -600,8 +598,7 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
                         onToggle={handleToggleBed}
                         onOccupiedTap={(bedId) => setOccupiedBedId(bedId)}
                         onAssignBed={(bedId) => handleCheckInBeds([bedId])}
-                        isOwner={isOwner}
-                        isManager={isManager}
+                        canManage={canManage}
                         colors={colors}
                         font={font}
                         space={space}
@@ -614,7 +611,7 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
                   )}
 
                   {/* Multi-select help hint */}
-                  {(isOwner || isManager) && vacantCount > 0 ? (
+                  {canManage && vacantCount > 0 ? (
                     <Text style={{ color: colors.textMuted, fontSize: 11, textAlign: 'center', marginTop: 4 }}>
                       Select multiple beds to merge into a single tenant agreement
                     </Text>
@@ -640,7 +637,7 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
               )}
 
               {/* Multi-bed selection action bar */}
-              {selectedBeds.length > 0 && (isOwner || isManager) ? (
+              {selectedBeds.length > 0 && canManage ? (
                 <View style={[styles.multiActionBar, { borderColor: colors.primary, backgroundColor: colors.primary + '0C' }]}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.sm }}>
                     <Text style={{ color: colors.primary, fontWeight: '700', fontSize: font.bodyStrong.fontSize }}>
@@ -660,7 +657,7 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
             </Card>
           ) : (
             // Unit with no beds
-            unit.status === 'vacant' && (isOwner || isManager) ? (
+            unit.status === 'vacant' && canManage ? (
               <Button
                 label="Check-in Tenant to Unit"
                 onPress={handleCheckInSingle}
@@ -720,7 +717,7 @@ export const UnitDetail: React.FC<{ route: any; navigation: any }> = ({ route, n
                 )}
 
                 {/* Vacate Bed Button */}
-                {(isOwner || isManager) && (
+                {canManage && (
                   <TouchableOpacity
                     onPress={() => {
                       Alert.alert(

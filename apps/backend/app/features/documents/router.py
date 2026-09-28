@@ -71,7 +71,7 @@ def get_document_file(document_id: int, current_user: AnyUser, db: DbSession) ->
 def update_document_status(
     document_id: int,
     payload: DocumentStatusUpdate,
-    current_user: OwnerManagerUser,
+    current_user: OwnerManagerStaffUser,
     db: DbSession,
 ) -> DocumentResponse:
     return DocumentService(db).update_status(document_id, payload, current_user)

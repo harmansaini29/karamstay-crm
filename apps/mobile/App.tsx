@@ -12,10 +12,17 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
-import { View } from 'react-native';
+import { AppState, AppStateStatus, Platform, View } from 'react-native';
+import { focusManager } from '@tanstack/react-query';
 
 // Keep the splash screen visible while fonts are loading
 SplashScreen.preventAutoHideAsync();
+
+function onAppStateChange(status: AppStateStatus) {
+  if (Platform.OS !== 'web') {
+    focusManager.setFocused(status === 'active');
+  }
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +40,11 @@ export default function App() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', onAppStateChange);
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {

@@ -196,12 +196,11 @@ export const StaffTabNavigator: React.FC = () => {
         <Tab.Screen
           name="Finance"
           component={FinanceStack}
-          options={{
-            popToTopOnBlur: true,
-          }}
           listeners={({ navigation }) => ({
             tabPress: () => {
-              navigation.navigate('Finance', { screen: 'FinanceHome' });
+              if (navigation.isFocused()) {
+                navigation.navigate('Finance', { screen: 'FinanceHome' });
+              }
             },
           })}
         />
@@ -219,12 +218,11 @@ export const StaffTabNavigator: React.FC = () => {
       <Tab.Screen
         name="More"
         component={MoreStack}
-        options={{
-          popToTopOnBlur: true,
-        }}
         listeners={({ navigation }) => ({
           tabPress: () => {
-            navigation.navigate('More', { screen: 'MoreHome' });
+            if (navigation.isFocused()) {
+              navigation.navigate('More', { screen: 'MoreHome' });
+            }
           },
         })}
       />

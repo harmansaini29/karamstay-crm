@@ -15,7 +15,7 @@ from app.features.consents.schemas import (
 from app.features.consents.service import ConsentService
 
 router = APIRouter()
-AnyUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "tenant"]))]
+AnyUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "tenant", "staff"]))]
 OwnerUser = Annotated[User, Depends(require_roles(["owner"]))]
 DbSession = Annotated[Session, Depends(get_db)]
 

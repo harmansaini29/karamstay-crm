@@ -44,6 +44,18 @@ export const TenantProfileScreen: React.FC = () => {
     },
   });
 
+  const { data: tenancyContext } = useQuery<any>({
+    queryKey: ['my-tenancy-context'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/tenants/me/context');
+        return res.data;
+      } catch {
+        return null;
+      }
+    },
+  });
+
   if (isLoading) return <LoadingSkeleton variant="detail" />;
   if (isError || !profile) {
     return (
@@ -87,6 +99,67 @@ export const TenantProfileScreen: React.FC = () => {
             </Text>
           </View>
         </Card>
+
+        {/* Stay & Room Assignment */}
+        {tenancyContext && tenancyContext.unit ? (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.text, fontSize: font.bodyStrong.fontSize, marginBottom: space.sm }]}>
+              Current Stay & Room
+            </Text>
+            <Card style={{ borderWidth: 1, marginBottom: space.md }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.bodyStrong.fontSize }}>
+                    {tenancyContext.unit.property_name || 'Assigned Property'}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 2 }}>
+                    Unit {tenancyContext.unit.unit_no}
+                    {tenancyContext.unit.building ? ` · ${tenancyContext.unit.building}` : ''}
+                    {tenancyContext.unit.floor != null ? ` (Floor ${tenancyContext.unit.floor})` : ''}
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    backgroundColor: '#10B98118',
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 6,
+                  }}
+                >
+                  <Text style={{ color: '#10B981', fontWeight: '700', fontSize: 11 }}>
+                    {tenancyContext.status ? String(tenancyContext.status).toUpperCase() : 'ACTIVE'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+              <View style={styles.gridRow}>
+                <View style={styles.gridCol}>
+                  <Text style={[styles.label, { color: colors.textMuted }]}>Monthly Rent</Text>
+                  <Text style={[styles.val, { color: colors.text, fontWeight: '700' }]}>
+                    ₹{tenancyContext.monthly_rent ? Number(tenancyContext.monthly_rent).toLocaleString('en-IN') : '0'}
+                  </Text>
+                </View>
+                <View style={styles.gridCol}>
+                  <Text style={[styles.label, { color: colors.textMuted }]}>Deposit Paid</Text>
+                  <Text style={[styles.val, { color: colors.text, fontWeight: '700' }]}>
+                    ₹{tenancyContext.security_deposit ? Number(tenancyContext.security_deposit).toLocaleString('en-IN') : '0'}
+                  </Text>
+                </View>
+              </View>
+
+              {tenancyContext.start_date ? (
+                <View style={{ marginTop: space.xs }}>
+                  <Text style={[styles.label, { color: colors.textMuted }]}>Move-in Date</Text>
+                  <Text style={{ color: colors.text, fontSize: font.caption.fontSize, marginTop: 2 }}>
+                    {new Date(tenancyContext.start_date).toLocaleDateString()}
+                  </Text>
+                </View>
+              ) : null}
+            </Card>
+          </>
+        ) : null}
 
         {/* Profile Details */}
         <Text style={[styles.sectionTitle, { color: colors.text, fontSize: font.bodyStrong.fontSize, marginBottom: space.sm }]}>

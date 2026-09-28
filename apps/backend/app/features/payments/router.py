@@ -34,7 +34,15 @@ def _to_invoice_response(inv: Invoice) -> InvoiceResponse:
     try:
         if inv.tenancy and inv.tenancy.unit and inv.tenancy.unit.property:
             prop = inv.tenancy.unit.property
-            res.payment_upi_id = get_configured_upi_for_property(property_name=prop.name, property_id=prop.id)
+            res.payment_upi_id = (
+                prop.payment_upi_id.strip()
+                if prop.payment_upi_id and prop.payment_upi_id.strip()
+                else get_configured_upi_for_property(
+                    property_name=prop.name,
+                    property_id=prop.id,
+                    db_upi_id=prop.payment_upi_id,
+                )
+            )
             res.property_name = prop.name
     except Exception:
         pass

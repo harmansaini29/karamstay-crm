@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { useQueryClient } from '@tanstack/react-query';
 import { storage } from '../../utils/storage';
 import { apiClient, parseApiError, syncAuthHeaders } from '../../api/client';
 import { jwtDecode } from 'jwt-decode';
@@ -79,6 +80,7 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const queryClient = useQueryClient();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -376,6 +378,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const handleLogoutActions = async () => {
+    try {
+      queryClient.clear();
+    } catch {}
     await storage.deleteItem('access_token');
     await storage.deleteItem('refresh_token');
     syncAuthHeaders(null);

@@ -98,6 +98,71 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
     enabled: !!tenancyUnit?.property_id,
   });
 
+  // Query legal agreements for this tenant
+  const {
+    data: tenantAgreements = [],
+    refetch: refetchTenantAgreements,
+    isFetching: isFetchingAgreements,
+  } = useQuery<any[]>({
+    queryKey: ['agreements', 'tenant', id],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get(`/agreements?tenant_id=${id}`);
+        return Array.isArray(res.data) ? res.data : [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!tenant,
+  });
+
+  const activeAgreement = tenantAgreements[0] ?? null;
+  const isAgreementFilled = !!(
+    activeAgreement &&
+    activeAgreement.form_data &&
+    Object.keys(activeAgreement.form_data).length > 0 &&
+    activeAgreement.status !== 'pending_tenant_fill' &&
+    activeAgreement.tracker_stage >= 1
+  );
+
+  const handleFetchAgreement = async () => {
+    try {
+      const res = await refetchTenantAgreements();
+      const ags = res.data || [];
+      const ag = ags[0];
+      if (
+        !ag ||
+        !ag.form_data ||
+        Object.keys(ag.form_data).length === 0 ||
+        ag.status === 'pending_tenant_fill' ||
+        ag.tracker_stage < 1
+      ) {
+        Alert.alert(
+          'Agreement Status',
+          'Not filled yet: The tenant has not filled or submitted the agreement details form yet.'
+        );
+      } else {
+        Alert.alert(
+          'Agreement Synced',
+          `Word agreement (.docx) is synced for this tenant.\nFile: ${ag.docx_file_name || 'agreement.docx'}`,
+          [
+            {
+              text: 'Open Workspace',
+              onPress: () =>
+                navigation.navigate('AgreementWorkspace', {
+                  tenantId: tenant!.id,
+                  tenantName: tenant!.name,
+                }),
+            },
+            { text: 'OK', style: 'cancel' },
+          ]
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Fetch Error', parseApiError(e).message);
+    }
+  };
+
   // ⚠️ ALL hooks must be declared before any conditional returns (Rules of Hooks)
   const { maskAmount } = useFinancialMask();
 
@@ -365,18 +430,62 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
                 style={{ flex: 1, marginLeft: space.sm }}
               />
             </View>
-            {/* Legal Agreement workspace */}
-            <Button
-              label="📄 Legal Agreement"
-              onPress={() =>
-                navigation.navigate('AgreementWorkspace', {
-                  tenantId: tenant.id,
-                  tenantName: tenant.name,
-                })
-              }
-              variant="secondary"
-              style={{ marginTop: space.sm }}
-            />
+            {/* Legal Agreement Workspace & Sync */}
+            <View style={{ marginTop: space.md, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.xs }}>
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.caption.fontSize }}>
+                  Rental Agreement
+                </Text>
+                <View
+                  style={{
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                    borderRadius: 4,
+                    backgroundColor: isAgreementFilled ? '#ECFDF5' : '#FEF3C7',
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: isAgreementFilled ? '#065F46' : '#92400E',
+                      fontWeight: '700',
+                      fontSize: 10,
+                    }}
+                  >
+                    {isAgreementFilled ? 'DOCX Synced' : 'Not Filled Yet'}
+                  </Text>
+                </View>
+              </View>
+
+              {!isAgreementFilled ? (
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: space.xs }}>
+                  Tenant has not filled or submitted the agreement form yet.
+                </Text>
+              ) : activeAgreement?.docx_file_name ? (
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: space.xs }}>
+                  Synced: {activeAgreement.docx_file_name}
+                </Text>
+              ) : null}
+
+              <View style={[styles.buttonRow, { marginTop: space.xs }]}>
+                <Button
+                  label={isFetchingAgreements ? 'Syncing...' : 'Fetch Agreement'}
+                  onPress={handleFetchAgreement}
+                  variant="secondary"
+                  style={{ flex: 1, marginRight: space.xs }}
+                />
+                <Button
+                  label="Legal Workspace"
+                  onPress={() =>
+                    navigation.navigate('AgreementWorkspace', {
+                      tenantId: tenant.id,
+                      tenantName: tenant.name,
+                    })
+                  }
+                  variant="secondary"
+                  style={{ flex: 1, marginLeft: space.xs }}
+                />
+              </View>
+            </View>
           </Card>
         ) : (
           <Card style={{ borderWidth: 1, alignItems: 'center', padding: space.xl }}>

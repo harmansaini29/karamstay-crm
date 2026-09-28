@@ -205,8 +205,10 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
       longitude: typeof longitude === 'number' ? longitude : null,
     };
 
-    if (!isEdit && paymentUpiId.trim()) {
+    if (paymentUpiId.trim()) {
       payload.payment_upi_id = paymentUpiId.trim();
+    } else {
+      payload.payment_upi_id = null;
     }
 
     if (isEdit) {
@@ -351,17 +353,14 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
           />
 
           <Input
-            label={isEdit ? "Property Payment GPay / UPI ID (Code-Managed)" : "Property Payment GPay / UPI ID"}
+            label="Property Payment GPay / UPI ID"
             value={paymentUpiId}
             onChangeText={setPaymentUpiId}
             placeholder="e.g. karamstay.dlf@okhdfcbank"
             autoCapitalize="none"
-            disabled={isEdit}
           />
           <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: -space.xs, marginBottom: space.md, lineHeight: 16 }}>
-            {isEdit
-              ? "🔒 Managed securely in backend code (PROPERTY_PAYMENT_REGISTRY) to prevent unauthorized payment redirection. Modifying UPI in-app is disabled for financial safety."
-              : "Configured centrally in code registry. Defaults to authoritative in-code registry if left blank."}
+            Direct UPI ID for tenant rent payments for this property. If left blank, defaults to standard system UPI ID.
           </Text>
 
           {isEdit ? (

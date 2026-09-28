@@ -10,7 +10,7 @@ from app.features.auth.dependencies import require_roles
 from app.features.auth.models import User
 
 router = APIRouter(prefix="/analytics")
-DashboardUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant"]))]
+DashboardUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "staff"]))]
 DbSession = Annotated[Session, Depends(get_db)]
 
 

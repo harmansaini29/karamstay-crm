@@ -262,6 +262,13 @@ class AgreementService:
         unit = self.prop_repo.get_unit(tenancy.unit_id) if tenancy else None
         property_ = self.prop_repo.get_property(unit.property_id) if unit else None
 
+        form_data = agreement.form_data
+        if not form_data or not isinstance(form_data, dict) or not any(form_data.values()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Not filled yet: Tenant has not filled and submitted the agreement form details.",
+            )
+
         def _get_stored(k: str | None) -> bytes | None:
             return self.storage.get_bytes(key=k) if k and self.storage.object_exists(key=k) else None
 
@@ -443,9 +450,10 @@ class AgreementService:
 
     def archive_agreement_to_s3(self, agreement_id: int, current_user: User) -> AgreementApproveResponse:
         """Owner approval: packages tenant photo, Aadhaar, signature, offline docs, and agreement into AWS S3."""
-        if current_user.role.name not in ("owner", "manager"):
+        if current_user.role.name not in ("owner", "manager", "staff"):
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Only owner or manager can approve and archive to S3"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only owner, manager, or staff can approve and archive to S3",
             )
 
         agreement = self.repo.get(agreement_id)

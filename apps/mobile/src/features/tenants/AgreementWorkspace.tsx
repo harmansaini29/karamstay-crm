@@ -118,6 +118,41 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
   const [uploadType, setUploadType] = useState<OfflineUpload['upload_type']>('stamp_paper');
   const [statusModalUpload, setStatusModalUpload] = useState<OfflineUpload | null>(null);
+  const [isFetchingAgreement, setIsFetchingAgreement] = useState(false);
+
+  const handleFetchAgreement = async () => {
+    setIsFetchingAgreement(true);
+    try {
+      const res = await refetch();
+      const currentAgreements = res.data || [];
+      const currentAg = currentAgreements[0];
+      if (!currentAg) {
+        Alert.alert(
+          'Agreement Status',
+          'Not filled yet: Rental agreement has not been initialized or submitted by the tenant.'
+        );
+      } else if (
+        currentAg.status === 'pending_tenant_fill' ||
+        !currentAg.form_data ||
+        Object.keys(currentAg.form_data).length === 0 ||
+        currentAg.tracker_stage < 1
+      ) {
+        Alert.alert(
+          'Agreement Status',
+          'Not filled yet: The tenant has not filled or submitted the agreement details form yet.'
+        );
+      } else {
+        Alert.alert(
+          'Agreement Synced',
+          `Word document (.docx) is synced and ready.\nFile: ${currentAg.docx_file_name || 'agreement.docx'}`
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Fetch Error', parseApiError(e).message);
+    } finally {
+      setIsFetchingAgreement(false);
+    }
+  };
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -688,17 +723,40 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
             <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Back</Text>
           </TouchableOpacity>
           <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>Legal Workspace</Text>
-          <TouchableOpacity
-            onPress={() => {
-              const baseUrl = apiClient.defaults.baseURL?.replace(/\/api\/v1\/?$/, '') || 'http://localhost:8000';
-              WebBrowser.openBrowserAsync(`${baseUrl}/api/v1/vault/portal`);
-            }}
-            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '15', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
-            accessibilityLabel="Open AWS S3 Confidential Vault"
-          >
-            <Ionicons name="shield-checkmark" size={16} color={colors.primary} style={{ marginRight: 4 }} />
-            <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>Vault</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <TouchableOpacity
+              onPress={handleFetchAgreement}
+              disabled={isFetchingAgreement}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.primary + '18',
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 6,
+              }}
+              accessibilityLabel="Fetch Agreement"
+            >
+              {isFetchingAgreement ? (
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 4 }} />
+              ) : (
+                <Ionicons name="cloud-download-outline" size={15} color={colors.primary} style={{ marginRight: 4 }} />
+              )}
+              <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>Fetch Agreement</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                const baseUrl = apiClient.defaults.baseURL?.replace(/\/api\/v1\/?$/, '') || 'http://localhost:8000';
+                WebBrowser.openBrowserAsync(`${baseUrl}/api/v1/vault/portal`);
+              }}
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '15', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
+              accessibilityLabel="Open AWS S3 Confidential Vault"
+            >
+              <Ionicons name="shield-checkmark" size={16} color={colors.primary} style={{ marginRight: 4 }} />
+              <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>Vault</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
 
@@ -736,16 +794,35 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
                 Agreement Not Filled Yet
               </Text>
               <Text style={{ color: colors.textMuted, fontSize: font.body.fontSize, textAlign: 'center', marginBottom: 8, lineHeight: 20 }}>
-                The rental agreement has been initialized and sent to this tenant. The tenant has not yet submitted their agreement form and KYC details.
+                The rental agreement has been initialized for this tenant. The tenant has not yet filled or submitted their agreement details and KYC documents.
               </Text>
-              <View style={{ backgroundColor: '#FEF3C7', borderRadius: 8, padding: 12, width: '100%', marginTop: 8 }}>
-                <Text style={{ color: '#92400E', fontSize: font.caption.fontSize, textAlign: 'center', fontWeight: '600' }}>
-                  Waiting for tenant to fill the form…
+              <View style={{ backgroundColor: '#FEF3C7', borderRadius: 8, padding: 12, width: '100%', marginTop: 8, marginBottom: 16 }}>
+                <Text style={{ color: '#92400E', fontSize: font.caption.fontSize, textAlign: 'center', fontWeight: '700' }}>
+                  Status: Not filled yet — waiting for tenant to fill and submit the agreement form
                 </Text>
               </View>
+              <Button
+                label={isFetchingAgreement ? 'Checking...' : 'Fetch Agreement (.docx)'}
+                variant="secondary"
+                loading={isFetchingAgreement}
+                onPress={handleFetchAgreement}
+              />
             </Card>
           ) : (
             <>
+              {agreement.docx_file_name ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', borderWidth: 1, padding: 10, borderRadius: 8, marginBottom: space.sm }}>
+                  <Ionicons name="checkmark-circle" size={18} color="#059669" style={{ marginRight: 8 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#065F46', fontWeight: '700', fontSize: font.caption.fontSize }}>
+                      Synced: Word Document (.docx) Ready
+                    </Text>
+                    <Text style={{ color: '#047857', fontSize: 11 }}>
+                      {agreement.docx_file_name}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
               {renderTracker()}
               {renderKycDocuments()}
               {renderFormData()}

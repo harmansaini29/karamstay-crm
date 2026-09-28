@@ -16,7 +16,7 @@ from app.features.notifications.schemas import (
 from app.features.notifications.service import NotificationService
 
 router = APIRouter()
-AnyUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "tenant"]))]
+AnyUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "tenant", "staff"]))]
 OwnerUser = Annotated[User, Depends(require_roles(["owner"]))]
 DbSession = Annotated[Session, Depends(get_db)]
 
