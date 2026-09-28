@@ -72,8 +72,8 @@ def test_agreements_crud_and_lifecycle(client, db_session):
     )
     assert res.status_code == 201
     ag_data = res.json()
-    assert ag_data["status"] == "form_submitted"
-    assert ag_data["tracker_stage"] == 1
+    assert ag_data["status"] == "pending_tenant_fill"
+    assert ag_data["tracker_stage"] == 0
     ag_id = ag_data["id"]
 
     # 2. List agreements
