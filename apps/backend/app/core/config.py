@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     firebase_service_account_json: str | None = None
     firebase_service_account_file: str | None = None
 
-    aws_s3_bucket: str | None = None
+    aws_s3_bucket: str | None = "karamstay-prod-app-storage-907079642634"
     aws_region: str = "ap-south-1"
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None

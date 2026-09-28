@@ -133,3 +133,36 @@ def test_tenant_tenancy_context_without_prior_tenancy(client, db_session):
     data = res.json()
     assert data["status"] == "pending_assignment"
     assert data["unit"] is None
+
+
+def test_property_update_ignores_tampered_upi_id(client, db_session):
+    """Test that attempting to update payment_upi_id via the API/client is discarded in favor of in-code registry."""
+    create_user(db_session, role_name="owner", email="owner_tamper_test@example.com")
+    headers = auth_headers(client, email="owner_tamper_test@example.com")
+
+    create_res = client.post(
+        "/api/v1/properties",
+        headers=headers,
+        json={
+            "name": "Property Alpha",
+            "address": "DLF Phase 1, Gurgaon",
+            "property_type": "Apartment",
+            "payment_upi_id": "alpha.karamstay@okhdfcbank",
+        },
+    )
+    assert create_res.status_code == 201
+    prop_id = create_res.json()["id"]
+
+    # Attempt to tamper with payment_upi_id through API
+    update_res = client.patch(
+        f"/api/v1/properties/{prop_id}",
+        headers=headers,
+        json={
+            "payment_upi_id": "attacker@fraudbank",
+            "address": "Updated Address",
+        },
+    )
+    assert update_res.status_code == 200
+    # In-code registry is authoritative: payment_upi_id must NOT be changed to attacker's ID
+    assert update_res.json()["payment_upi_id"] == "alpha.karamstay@okhdfcbank"
+    assert update_res.json()["address"] == "Updated Address"

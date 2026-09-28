@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient, parseApiError } from '../../api/client';
+import { apiClient, parseApiError, resolveStorageUrl } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
@@ -111,12 +111,12 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
   const handleDownload = async (id: number) => {
     try {
       const downloadRes = await apiClient.get(`/documents/${id}/download`);
-      const { download_url } = downloadRes.data;
-      if (download_url) {
-        await WebBrowser.openBrowserAsync(download_url);
-      } else {
-        throw new Error('Download URL empty');
+      let downloadUrl = resolveStorageUrl(downloadRes.data?.download_url);
+      if (!downloadUrl) {
+        const baseURL = apiClient.defaults.baseURL || '';
+        downloadUrl = `${baseURL}/documents/${id}/file`;
       }
+      await WebBrowser.openBrowserAsync(downloadUrl);
     } catch (err: any) {
       Alert.alert('Download Failed', parseApiError(err).message || 'Unable to open file link');
     }
@@ -164,61 +164,121 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
     const asset = stagedAsset;
     const tenantId = stagedTenantId;
     try {
-      // 1. Request presigned upload URL from backend for the chosen tenant
-      const presignRes = await apiClient.post('/documents/presign-upload', {
-        document_type: 'lease_agreement',
-        file_name: asset.name,
-        content_type: asset.mimeType || 'application/octet-stream',
-        tenant_id: tenantId,
-      });
+      let fileName = asset.name || asset.fileName || 'lease_agreement.pdf';
+      let contentType = asset.mimeType || 'application/octet-stream';
+      if (contentType === 'application/octet-stream') {
+        const lower = fileName.toLowerCase();
+        if (lower.endsWith('.pdf')) contentType = 'application/pdf';
+        else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) contentType = 'image/jpeg';
+        else if (lower.endsWith('.png')) contentType = 'image/png';
+        else if (lower.endsWith('.webp')) contentType = 'image/webp';
+        else if (lower.endsWith('.docx')) contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      }
+      if (!fileName.includes('.')) {
+        if (contentType.includes('pdf')) fileName += '.pdf';
+        else if (contentType.includes('png')) fileName += '.png';
+        else if (contentType.includes('jpeg') || contentType.includes('jpg')) fileName += '.jpg';
+        else fileName += '.pdf';
+      }
 
-      const { upload_url, file_key } = presignRes.data;
-
-      // 2. Put file to S3 using the presigned URL
-      let uploadSuccess = false;
-      const contentType = asset.mimeType || 'application/octet-stream';
-
-      // Prefer native upload via expo-file-system if available
+      // 1. Read file as base64 to ensure resilient direct-upload fallback
+      let base64Content: string | null = null;
       try {
-        if (FileSystem.uploadAsync) {
-          const fsRes = await FileSystem.uploadAsync(upload_url, asset.uri, {
-            httpMethod: 'PUT',
-            uploadType: (FileSystem as any).UploadType?.BINARY_CONTENT ?? (FileSystem as any).FileSystemUploadType?.BINARY_CONTENT,
-            headers: { 'Content-Type': contentType },
-          });
-          if (fsRes.status >= 200 && fsRes.status < 300) {
-            uploadSuccess = true;
+        base64Content = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+        });
+      } catch {
+        // If local file reading fails, continue to attempt presigned upload
+      }
+
+      // 2. Request presigned upload URL from backend for the chosen tenant
+      let presignRes: any = null;
+      try {
+        presignRes = await apiClient.post('/documents/presign-upload', {
+          document_type: 'lease_agreement',
+          file_name: fileName,
+          content_type: contentType,
+          tenant_id: tenantId,
+        });
+      } catch {
+        // Backend presign failed; fall through to direct upload if base64 is available
+      }
+
+      let uploadUrl = presignRes?.data?.upload_url;
+      const fileKey = presignRes?.data?.file_key;
+      let uploadSuccess = false;
+
+      if (uploadUrl) {
+        uploadUrl = resolveStorageUrl(uploadUrl);
+      }
+
+      const isInternalMock = uploadUrl && (
+        uploadUrl.includes('s3.local.karamstay.internal') ||
+        uploadUrl.includes('mock-presigned-url')
+      );
+
+      if (uploadUrl && !isInternalMock) {
+        // Prefer native upload via expo-file-system if available
+        try {
+          if (FileSystem.uploadAsync) {
+            const fsRes = await FileSystem.uploadAsync(uploadUrl, asset.uri, {
+              httpMethod: 'PUT',
+              uploadType:
+                (FileSystem as any).FileSystemUploadType?.BINARY_CONTENT ??
+                (FileSystem as any).UploadType?.BINARY_CONTENT ??
+                0,
+              headers: { 'Content-Type': contentType },
+            });
+            if (fsRes.status >= 200 && fsRes.status < 300) {
+              uploadSuccess = true;
+            }
+          }
+        } catch {
+          // Native upload failed, try fetch fallback
+        }
+
+        if (!uploadSuccess) {
+          try {
+            const fileRes = await fetch(asset.uri);
+            const fileBlob = await fileRes.blob();
+            const putRes = await fetch(uploadUrl, {
+              method: 'PUT',
+              body: fileBlob,
+              headers: {
+                'Content-Type': contentType,
+              },
+            });
+            if (putRes.ok) {
+              uploadSuccess = true;
+            }
+          } catch {
+            // S3 fetch upload failed
           }
         }
-      } catch {
-        // Fallback to fetch
       }
 
-      if (!uploadSuccess) {
-        const fileRes = await fetch(asset.uri);
-        const fileBlob = await fileRes.blob();
-
-        const putRes = await fetch(upload_url, {
-          method: 'PUT',
-          body: fileBlob,
-          headers: {
-            'Content-Type': contentType,
-          },
+      // 3. Confirm with backend metadata service:
+      // If S3 upload succeeded, supply file_key.
+      // Otherwise, fall back cleanly to direct base64 upload!
+      if (uploadSuccess && fileKey) {
+        await apiClient.post('/documents', {
+          document_type: 'lease_agreement',
+          file_key: fileKey,
+          file_name: fileName,
+          content_type: contentType,
+          tenant_id: tenantId,
         });
-
-        if (!putRes.ok) {
-          throw new Error(`Failed to upload file bytes to storage (${putRes.status})`);
-        }
+      } else if (base64Content) {
+        await apiClient.post('/documents', {
+          document_type: 'lease_agreement',
+          file_name: fileName,
+          content_type: contentType,
+          tenant_id: tenantId,
+          file_base64: base64Content,
+        });
+      } else {
+        throw new Error('Failed to upload file to S3 or backend.');
       }
-
-      // 3. Confirm upload with the backend metadata service
-      await apiClient.post('/documents', {
-        document_type: 'lease_agreement',
-        file_key,
-        file_name: asset.name,
-        content_type: asset.mimeType || 'application/octet-stream',
-        tenant_id: tenantId,
-      });
 
       // Invalidate document list + agreement pipeline
       queryClient.invalidateQueries({ queryKey: ['documents'] });
@@ -229,7 +289,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
       setStagedTenantId(null);
       Alert.alert('Success', 'Legal document uploaded to vault successfully.');
     } catch (err: any) {
-      Alert.alert('Upload Failed', err.message || 'Unable to complete upload');
+      Alert.alert('Upload Failed', parseApiError(err).message || err.message || 'Unable to complete upload');
     } finally {
       setIsUploading(false);
     }

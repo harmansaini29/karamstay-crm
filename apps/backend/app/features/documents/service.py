@@ -2,6 +2,11 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLogService
+from app.core.file_utils import (
+    ensure_filename_extension,
+    safe_b64decode,
+    validate_file_extension,
+)
 from app.core.security import utc_now
 from app.core.storage import get_storage
 from app.features.auth.models import User
@@ -35,12 +40,14 @@ class DocumentService:
             tenant_id=payload.tenant_id,
             property_id=payload.property_id,
         )
+        safe_name = ensure_filename_extension(payload.file_name, payload.content_type)
+        validate_file_extension(safe_name, content_type=payload.content_type)
         storage = get_storage()
         if payload.tenant_id:
             prefix = f"documents/tenant-{payload.tenant_id}"
         else:
             prefix = f"documents/property-{payload.property_id}"
-        key = storage.build_key(prefix=prefix, file_name=payload.file_name)
+        key = storage.build_key(prefix=prefix, file_name=safe_name)
         upload_url = storage.presign_upload(key=key, content_type=payload.content_type)
         return {"upload_url": upload_url, "file_key": key}
 
@@ -50,13 +57,34 @@ class DocumentService:
             tenant_id=payload.tenant_id,
             property_id=payload.property_id,
         )
+        storage = get_storage()
+        safe_name = ensure_filename_extension(payload.file_name, payload.content_type)
+        validate_file_extension(safe_name, content_type=payload.content_type)
+
+        if payload.file_base64:
+            raw_bytes = safe_b64decode(payload.file_base64)
+            if payload.tenant_id:
+                prefix = f"documents/tenant-{payload.tenant_id}"
+            else:
+                prefix = f"documents/property-{payload.property_id}"
+            file_key = storage.build_key(prefix=prefix, file_name=safe_name)
+            try:
+                storage.upload_bytes(key=file_key, data=raw_bytes, content_type=payload.content_type)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to store document in storage: {exc}",
+                ) from exc
+        else:
+            file_key = payload.file_key or ""
+
         document = Document(
             tenant_id=payload.tenant_id,
             property_id=payload.property_id,
             maintenance_ticket_id=payload.maintenance_ticket_id,
             document_type=payload.document_type,
-            file_key=payload.file_key,
-            file_name=payload.file_name,
+            file_key=file_key,
+            file_name=safe_name,
             content_type=payload.content_type,
             uploaded_by_id=current_user.id,
             created_by_id=current_user.id,
@@ -73,6 +101,21 @@ class DocumentService:
         self.db.commit()
         self.db.refresh(document)
         return document
+
+    def get_document_bytes(self, document_id: int, current_user: User) -> tuple[bytes, str, str]:
+        document = self._get_document_for_user(document_id, current_user)
+        storage = get_storage()
+        raw = storage.get_bytes(key=document.file_key)
+        if raw is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document file content not found")
+        self.audit.record(
+            user_id=current_user.id,
+            action="document.stream_download",
+            entity_type="document",
+            entity_id=document.id,
+        )
+        self.db.commit()
+        return raw, document.content_type, document.file_name
 
     def list_documents(self, current_user: User) -> list[Document]:
         role = current_user.role.name

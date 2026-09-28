@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLogService
 from app.core.config import settings
+from app.core.notify.fcm import is_configured as is_fcm_configured
+from app.core.notify.fcm import send_otp_push
 from app.core.notify.sms import is_sms_configured, send_sms
 from app.core.notify.whatsapp import is_configured as is_whatsapp_configured
 from app.core.notify.whatsapp import send_template_message
@@ -122,16 +124,30 @@ class AuthService:
             except Exception as exc:
                 logger.warning("WhatsApp send failed for %s: %s", canonical_phone, exc)
 
+        # Firebase push notification (free instant OTP channel if tenant has registered device)
+        if tenant.user_id and is_fcm_configured():
+            try:
+                from app.features.notifications.repository import NotificationRepository
+                notif_repo = NotificationRepository(self.db)
+                tokens = notif_repo.list_device_tokens(tenant.user_id)
+                for dev in tokens:
+                    res = send_otp_push(token=dev.fcm_token, code=code, expire_minutes=settings.otp_expire_minutes)
+                    if res.get("status") == "sent":
+                        delivered = True
+            except Exception as exc:
+                logger.warning("FCM OTP push failed for tenant %s: %s", tenant.name, exc)
+
         if not delivered and is_sms_configured():
             try:
-                send_sms(
+                sms_res = send_sms(
                     to=canonical_phone,
                     message=(
                         f"Your KaramStay verification OTP code is {code}. "
                         f"Valid for {settings.otp_expire_minutes} minutes."
                     ),
                 )
-                delivered = True
+                if sms_res.get("status") in ("sent", "fallback"):
+                    delivered = sms_res.get("status") == "sent"
             except Exception as exc:
                 logger.warning("SMS send failed for %s: %s", canonical_phone, exc)
 

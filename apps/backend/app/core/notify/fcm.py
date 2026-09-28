@@ -54,10 +54,28 @@ def send_push(*, token: str, title: str, body: str, data: dict[str, str] | None 
         logger.warning("FCM not configured; skipping push to %s", token)
         return {"status": "skipped", "reason": "not_configured"}
 
-    message = messaging.Message(
+    try:
+        message = messaging.Message(
+            token=token,
+            notification=messaging.Notification(title=title, body=body),
+            data=data or {},
+        )
+        message_id = messaging.send(message, app=app)
+        return {"status": "sent", "message_id": message_id}
+    except Exception as exc:
+        logger.warning("FCM push send error to %s: %s", token, exc)
+        return {"status": "failed", "error": str(exc)}
+
+
+def send_otp_push(*, token: str, code: str, expire_minutes: int = 10) -> dict[str, Any]:
+    """Send OTP directly to tenant device via Firebase Cloud Messaging (free instant push channel)."""
+    return send_push(
         token=token,
-        notification=messaging.Notification(title=title, body=body),
-        data=data or {},
+        title="KaramStay Verification Code",
+        body=f"Your verification code is {code}. Valid for {expire_minutes} minutes.",
+        data={
+            "type": "otp_verification",
+            "otp_code": code,
+            "expire_minutes": str(expire_minutes),
+        },
     )
-    message_id = messaging.send(message, app=app)
-    return {"status": "sent", "message_id": message_id}

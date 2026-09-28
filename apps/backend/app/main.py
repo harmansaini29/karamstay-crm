@@ -22,6 +22,13 @@ logger = logging.getLogger("karamstay.health")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    try:
+        from app.core.property_payments import sync_property_payment_ids_to_db
+        with SessionLocal() as db:
+            sync_property_payment_ids_to_db(db)
+    except Exception as exc:
+        logger.warning("Startup property payment sync skipped or failed: %s", exc)
+
     register_payment_jobs()
     register_notification_jobs()
     start_scheduler()

@@ -24,6 +24,7 @@ import {
   Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
@@ -161,8 +162,17 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
         quality: 0.8,
         base64: true,
       });
-      if (!result.canceled && result.assets?.[0]?.base64) {
-        setTenantPhoto({ uri: result.assets[0].uri, base64: result.assets[0].base64 });
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        let b64 = asset.base64;
+        if (!b64 && asset.uri) {
+          try {
+            b64 = await FileSystem.readAsStringAsync(asset.uri, {
+              encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+            });
+          } catch {}
+        }
+        setTenantPhoto({ uri: asset.uri, base64: b64 || '' });
       }
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Could not pick photo');
@@ -182,8 +192,17 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
         quality: 0.85,
         base64: true,
       });
-      if (!result.canceled && result.assets?.[0]?.base64) {
-        setAadharCard({ uri: result.assets[0].uri, base64: result.assets[0].base64 });
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        let b64 = asset.base64;
+        if (!b64 && asset.uri) {
+          try {
+            b64 = await FileSystem.readAsStringAsync(asset.uri, {
+              encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+            });
+          } catch {}
+        }
+        setAadharCard({ uri: asset.uri, base64: b64 || '' });
       }
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Could not pick Aadhaar document');
@@ -203,8 +222,17 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
         quality: 0.85,
         base64: true,
       });
-      if (!result.canceled && result.assets?.[0]?.base64) {
-        setSignature({ uri: result.assets[0].uri, base64: result.assets[0].base64 });
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        let b64 = asset.base64;
+        if (!b64 && asset.uri) {
+          try {
+            b64 = await FileSystem.readAsStringAsync(asset.uri, {
+              encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+            });
+          } catch {}
+        }
+        setSignature({ uri: asset.uri, base64: b64 || '' });
       }
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Could not pick signature');

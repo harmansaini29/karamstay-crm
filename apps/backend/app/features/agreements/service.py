@@ -1,4 +1,3 @@
-import base64
 import logging
 import os
 import re
@@ -7,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.file_utils import get_content_type_for_file, safe_b64decode
 from app.core.security import utc_now
 from app.core.storage import get_storage
 from app.features.agreements.docx_generator import build_agreement_docx, build_agreement_pdf
@@ -177,42 +177,24 @@ class AgreementService:
 
         agreement.form_data = payload.form_data
 
-        # Decode & store images
-        def _save_b64(data_b64: str, file_prefix: str, content_type: str) -> str:
-            if "," in data_b64:
-                data_b64 = data_b64.split(",", 1)[1]
-            raw = base64.b64decode(data_b64)
-            key = f"kyc/ag_{agreement_id}_{file_prefix}"
-            self.storage.upload_bytes(key=key, data=raw, content_type=content_type)
-            return key
-
         photo_bytes = None
         aadhar_bytes = None
         signature_bytes = None
 
         if payload.tenant_photo_base64:
-            b64 = payload.tenant_photo_base64
-            if "," in b64:
-                b64 = b64.split(",", 1)[1]
-            photo_bytes = base64.b64decode(b64)
+            photo_bytes = safe_b64decode(payload.tenant_photo_base64)
             key = f"kyc/ag_{agreement_id}_photo.jpg"
             self.storage.upload_bytes(key=key, data=photo_bytes, content_type="image/jpeg")
             agreement.tenant_photo_key = key
 
         if payload.aadhar_card_base64:
-            b64 = payload.aadhar_card_base64
-            if "," in b64:
-                b64 = b64.split(",", 1)[1]
-            aadhar_bytes = base64.b64decode(b64)
+            aadhar_bytes = safe_b64decode(payload.aadhar_card_base64)
             key = f"kyc/ag_{agreement_id}_aadhar.jpg"
             self.storage.upload_bytes(key=key, data=aadhar_bytes, content_type="image/jpeg")
             agreement.aadhar_card_key = key
 
         if payload.signature_base64:
-            b64 = payload.signature_base64
-            if "," in b64:
-                b64 = b64.split(",", 1)[1]
-            signature_bytes = base64.b64decode(b64)
+            signature_bytes = safe_b64decode(payload.signature_base64)
             key = f"kyc/ag_{agreement_id}_signature.png"
             self.storage.upload_bytes(key=key, data=signature_bytes, content_type="image/png")
             agreement.signature_key = key
@@ -360,26 +342,8 @@ class AgreementService:
         s3_key = f"offline_uploads/ag_{agreement_id}_{payload.upload_type}_{safe_name}"
         file_url = None
         if payload.file_base64:
-            b64 = payload.file_base64.strip()
-            if "," in b64:
-                b64 = b64.split(",", 1)[1].strip()
-            missing_padding = len(b64) % 4
-            if missing_padding:
-                b64 += "=" * (4 - missing_padding)
-            try:
-                raw = base64.b64decode(b64)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid base64 document content: {str(e)}",
-                ) from e
-            content_type = (
-                "application/pdf"
-                if ext.lower() == ".pdf"
-                else "image/png"
-                if ext.lower() == ".png"
-                else "image/jpeg"
-            )
+            raw = safe_b64decode(payload.file_base64)
+            content_type = get_content_type_for_file(safe_name, fallback="application/octet-stream")
             self.storage.upload_bytes(key=s3_key, data=raw, content_type=content_type)
             file_url = self.storage.presign_download(key=s3_key)
 
@@ -435,6 +399,46 @@ class AgreementService:
 
         url = self.storage.presign_download(key=key)
         return {"download_url": url, "file_name": file_name}
+
+    def get_agreement_file_bytes(
+        self, agreement_id: int, doc_type: str, current_user: User
+    ) -> tuple[bytes, str, str]:
+        info = self.get_download_url(agreement_id, doc_type, current_user)
+        agreement = self.get_agreement(agreement_id, current_user)
+        key_map = {
+            "docx": f"agreements/ag_{agreement.id}_{agreement.template_id}.docx",
+            "pdf": f"agreements/ag_{agreement.id}_{agreement.template_id}.pdf",
+            "photo": agreement.tenant_photo_key,
+            "aadhar": agreement.aadhar_card_key,
+            "signature": agreement.signature_key,
+        }
+        key = key_map.get(doc_type)
+        raw = self.storage.get_bytes(key=key) if key else None
+        if raw is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"{doc_type} content not found in storage",
+            )
+        content_type = get_content_type_for_file(info["file_name"])
+        return raw, content_type, info["file_name"]
+
+    def get_upload_file_bytes(
+        self, agreement_id: int, upload_id: int, current_user: User
+    ) -> tuple[bytes, str, str]:
+        self._assert_access(current_user)
+        upload = self.repo.get_upload(upload_id)
+        if upload is None or upload.agreement_id != agreement_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload record not found")
+        if not upload.s3_key:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload file key not found")
+        raw = self.storage.get_bytes(key=upload.s3_key)
+        if raw is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Upload file content not found in storage",
+            )
+        content_type = get_content_type_for_file(upload.file_name)
+        return raw, content_type, upload.file_name
 
 
     def update_upload_status(
@@ -612,9 +616,10 @@ class AgreementService:
             name, ext = os.path.splitext(upload.file_name or "document.jpg")
             safe_name = f"{_sanitize_slug(name)}{ext.lower() if ext else '.jpg'}"
             dest_key = f"{s3_folder}/{upload.upload_type}_{upload.id}_{safe_name}"
+            upload_content_type = get_content_type_for_file(safe_name, fallback="image/jpeg")
             upload_data = self.storage.get_bytes(key=upload.s3_key) if upload.s3_key else None
             if upload_data:
-                self.storage.upload_bytes(key=dest_key, data=upload_data, content_type="image/jpeg")
+                self.storage.upload_bytes(key=dest_key, data=upload_data, content_type=upload_content_type)
             upload.status = "APPROVED"
             upload.s3_key = dest_key
             upload.file_url = self.storage.presign_download(key=dest_key)
@@ -627,10 +632,12 @@ class AgreementService:
                     document_type=upload.upload_type,
                     file_key=dest_key,
                     file_name=f"{upload.upload_type.replace('_', ' ').title()} - {upload.file_name}",
-                    content_type="image/jpeg",
+                    content_type=upload_content_type,
                     status="approved",
                     status_updated_at=utc_now(),
                     status_updated_by_id=current_user.id,
+                    created_by_id=current_user.id,
+                    updated_by_id=current_user.id,
                 )
             )
 

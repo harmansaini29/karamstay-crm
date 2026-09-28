@@ -2,6 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLogService
+from app.core.property_payments import get_configured_upi_for_property
 from app.core.security import utc_now
 from app.features.auth.models import User
 from app.features.properties.models import Bed, Property, Unit
@@ -23,9 +24,17 @@ class PropertyService:
         self.audit = AuditLogService(db)
 
     def list_properties(self, current_user: User) -> list[Property]:
-        return self.repository.list_properties(current_user.id, current_user.role.name)
+        props = self.repository.list_properties(current_user.id, current_user.role.name)
+        for prop in props:
+            configured = get_configured_upi_for_property(property_name=prop.name, property_id=prop.id)
+            if prop.payment_upi_id != configured:
+                prop.payment_upi_id = configured
+        return props
 
     def create_property(self, payload: PropertyCreate, current_user: User) -> Property:
+        # Authoritative in-code registry takes precedence to eliminate financial risk from in-app tampering
+        configured_upi = get_configured_upi_for_property(property_name=payload.name)
+        payment_upi_id = configured_upi or payload.payment_upi_id
         property = Property(
             owner_id=current_user.id,
             name=payload.name,
@@ -34,12 +43,16 @@ class PropertyService:
             city=payload.city,
             state=payload.state,
             pincode=payload.pincode,
-            payment_upi_id=payload.payment_upi_id,
+            payment_upi_id=payment_upi_id,
             created_by_id=current_user.id,
             updated_by_id=current_user.id,
         )
         self.repository.add_property(property)
         self.db.flush()
+        # Ensure ID-specific in-code mapping if registered by numeric ID
+        id_configured = get_configured_upi_for_property(property_name=property.name, property_id=property.id)
+        if property.payment_upi_id != id_configured:
+            property.payment_upi_id = id_configured
         self.audit.record(
             user_id=current_user.id,
             action="property.create",
@@ -59,6 +72,9 @@ class PropertyService:
             property_id,
         ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Property access denied")
+        configured = get_configured_upi_for_property(property_name=property.name, property_id=property.id)
+        if property.payment_upi_id != configured:
+            property.payment_upi_id = configured
         return property
 
     def update_property(
@@ -69,8 +85,15 @@ class PropertyService:
     ) -> Property:
         property = self.get_property_for_user(property_id, current_user)
         update_data = payload.model_dump(exclude_unset=True)
+        # Disallow in-app tampering of payment UPI ID — must be changed via in-code registry
+        update_data.pop("payment_upi_id", None)
         for field, value in update_data.items():
             setattr(property, field, value)
+        # Re-sync authoritative in-code UPI ID
+        property.payment_upi_id = get_configured_upi_for_property(
+            property_name=property.name,
+            property_id=property.id,
+        )
         property.updated_by_id = current_user.id
         self.audit.record(
             user_id=current_user.id,

@@ -1,4 +1,3 @@
-import base64
 import io
 import logging
 import os
@@ -13,6 +12,7 @@ from fpdf import FPDF
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.file_utils import safe_b64decode, sanitize_filename
 from app.core.storage import get_storage
 from app.features.auth.models import User
 from app.features.vault.schemas import (
@@ -117,16 +117,19 @@ class VaultService:
         self._assert_access(current_user)
 
         folder = payload.folder.strip("/")
-        safe_name = payload.file_name.replace("/", "_").replace("\\", "_")
+        safe_name = sanitize_filename(payload.file_name)
         key = f"{folder}/{safe_name}"
 
-        b64_data = payload.file_base64
-        if "," in b64_data:
-            b64_data = b64_data.split(",", 1)[1]
-
-        raw_bytes = base64.b64decode(b64_data)
-        self.storage.upload_bytes(key=key, data=raw_bytes, content_type=payload.content_type)
-        download_url = self.storage.presign_download(key=key)
+        raw_bytes = safe_b64decode(payload.file_base64)
+        try:
+            self.storage.upload_bytes(key=key, data=raw_bytes, content_type=payload.content_type)
+            download_url = self.storage.presign_download(key=key)
+        except Exception as exc:
+            logger.error("Vault storage upload failed for key %s: %s", key, exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Storage upload error: {exc}",
+            ) from exc
 
         return VaultOperationResponse(
             success=True,

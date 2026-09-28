@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLogService
+from app.core.property_payments import get_configured_upi_for_property
 from app.core.security import utc_now
 from app.features.agreements.models import Agreement
 from app.features.auth.models import Role, User
@@ -384,7 +385,11 @@ class TenantService:
                 "floor": unit.floor,
                 "property_id": unit.property_id,
                 "property_name": property_.name if property_ is not None else "",
-                "payment_upi_id": property_.payment_upi_id if property_ is not None else None,
+                "payment_upi_id": (
+                    get_configured_upi_for_property(property_name=property_.name, property_id=property_.id)
+                    if property_ is not None
+                    else None
+                ),
             }
         return {
             "id": tenancy.id,

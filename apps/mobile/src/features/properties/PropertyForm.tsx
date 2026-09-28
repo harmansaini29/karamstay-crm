@@ -199,12 +199,15 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
       city: city.trim() || null,
       state: state.trim() || null,
       pincode: pincode.trim() || null,
-      payment_upi_id: paymentUpiId.trim() || null,
       // Explicitly coerce to number or null — Android Hermes can pass state
       // variables as string "null" if they were initialised from route.params
       latitude: typeof latitude === 'number' ? latitude : null,
       longitude: typeof longitude === 'number' ? longitude : null,
     };
+
+    if (!isEdit && paymentUpiId.trim()) {
+      payload.payment_upi_id = paymentUpiId.trim();
+    }
 
     if (isEdit) {
       payload.is_active = isActive === 'true';
@@ -348,14 +351,17 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
           />
 
           <Input
-            label="Property Payment GPay / UPI ID"
+            label={isEdit ? "Property Payment GPay / UPI ID (Code-Managed)" : "Property Payment GPay / UPI ID"}
             value={paymentUpiId}
             onChangeText={setPaymentUpiId}
             placeholder="e.g. karamstay.dlf@okhdfcbank"
             autoCapitalize="none"
+            disabled={isEdit}
           />
           <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: -space.xs, marginBottom: space.md, lineHeight: 16 }}>
-            Every tenant assigned to this property will receive this specific UPI ID when making payments via Google Pay, PhonePe, or Paytm.
+            {isEdit
+              ? "🔒 Managed securely in backend code (PROPERTY_PAYMENT_REGISTRY) to prevent unauthorized payment redirection. Modifying UPI in-app is disabled for financial safety."
+              : "Configured centrally in code registry. Defaults to authoritative in-code registry if left blank."}
           </Text>
 
           {isEdit ? (

@@ -8,7 +8,7 @@ from app.core.security import utc_now
 from app.features.notifications.models import Notification
 from app.features.notifications.repository import NotificationRepository
 
-_STATUS_MAP = {"sent": "sent", "skipped": "skipped"}
+_STATUS_MAP = {"sent": "sent", "skipped": "skipped", "fallback": "sent"}
 
 
 def notify_sms(

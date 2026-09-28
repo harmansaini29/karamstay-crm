@@ -25,7 +25,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient, parseApiError } from '../../api/client';
+import { apiClient, parseApiError, resolveStorageUrl } from '../../api/client';
 import { useTheme } from '../../theme/ThemeProvider';
 import { color as semanticColor } from '../../theme/tokens';
 import { Card } from '../../components/Card';
@@ -35,6 +35,7 @@ import { LoadingSkeleton } from '../../components/States';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import * as WebBrowser from 'expo-web-browser';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
@@ -280,11 +281,19 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
             if (!result.canceled && result.assets?.length) {
               const asset = result.assets[0];
               const fileName = asset.fileName ?? `${typeToUpload}_${Date.now()}.jpg`;
+              let b64 = asset.base64;
+              if (!b64 && asset.uri) {
+                try {
+                  b64 = await FileSystem.readAsStringAsync(asset.uri, {
+                    encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+                  });
+                } catch {}
+              }
               uploadMutation.mutate({
                 agId: agreement.id,
                 upload_type: typeToUpload,
                 file_name: fileName,
-                file_base64: asset.base64 || undefined,
+                file_base64: b64 || undefined,
               });
             }
           } catch (e: any) {
@@ -295,7 +304,7 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
         },
       },
       {
-        text: 'Document / Gallery',
+        text: 'Photo Gallery',
         onPress: async () => {
           try {
             const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -312,15 +321,56 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
             if (!result.canceled && result.assets?.length) {
               const asset = result.assets[0];
               const fileName = asset.fileName ?? `${typeToUpload}_${Date.now()}.jpg`;
+              let b64 = asset.base64;
+              if (!b64 && asset.uri) {
+                try {
+                  b64 = await FileSystem.readAsStringAsync(asset.uri, {
+                    encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+                  });
+                } catch {}
+              }
               uploadMutation.mutate({
                 agId: agreement.id,
                 upload_type: typeToUpload,
                 file_name: fileName,
-                file_base64: asset.base64 || undefined,
+                file_base64: b64 || undefined,
               });
             }
           } catch (e: any) {
             Alert.alert('Error', e?.message || 'Could not open picker');
+          } finally {
+            isPickingRef.current = false;
+          }
+        },
+      },
+      {
+        text: 'PDF / Document File',
+        onPress: async () => {
+          try {
+            const result = await DocumentPicker.getDocumentAsync({
+              type: ['application/pdf', 'image/*'],
+              copyToCacheDirectory: true,
+            });
+            if (!result.canceled && result.assets?.length) {
+              const asset = result.assets[0];
+              const fileName = asset.name ?? `${typeToUpload}_${Date.now()}.pdf`;
+              let b64: string | undefined = undefined;
+              if (asset.uri) {
+                try {
+                  b64 = await FileSystem.readAsStringAsync(asset.uri, {
+                    encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+                  });
+                } catch {}
+              }
+              uploadMutation.mutate({
+                agId: agreement.id,
+                upload_type: typeToUpload,
+                file_name: fileName,
+                file_base64: b64,
+              });
+            }
+          } catch (e: any) {
+            Alert.alert('Error', e?.message || 'Could not pick document');
           } finally {
             isPickingRef.current = false;
           }
@@ -407,8 +457,8 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
           <View style={{ flex: 1, alignItems: 'center', padding: 8, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
             <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600', marginBottom: 6 }}>Photo</Text>
             {agreement?.tenant_photo_url ? (
-              <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync(agreement.tenant_photo_url!)}>
-                <Image source={{ uri: agreement.tenant_photo_url }} style={{ width: 64, height: 64, borderRadius: 32, borderWidth: 1, borderColor: colors.border }} />
+              <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync(resolveStorageUrl(agreement.tenant_photo_url!))}>
+                <Image source={{ uri: resolveStorageUrl(agreement.tenant_photo_url) }} style={{ width: 64, height: 64, borderRadius: 32, borderWidth: 1, borderColor: colors.border }} />
               </TouchableOpacity>
             ) : (
               <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primary + '15', justifyContent: 'center', alignItems: 'center' }}>
@@ -422,8 +472,8 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
           <View style={{ flex: 1, alignItems: 'center', padding: 8, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
             <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600', marginBottom: 6 }}>Aadhaar</Text>
             {agreement?.aadhar_card_url ? (
-              <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync(agreement.aadhar_card_url!)}>
-                <Image source={{ uri: agreement.aadhar_card_url }} style={{ width: 80, height: 64, borderRadius: 6, borderWidth: 1, borderColor: colors.border }} />
+              <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync(resolveStorageUrl(agreement.aadhar_card_url!))}>
+                <Image source={{ uri: resolveStorageUrl(agreement.aadhar_card_url) }} style={{ width: 80, height: 64, borderRadius: 6, borderWidth: 1, borderColor: colors.border }} />
               </TouchableOpacity>
             ) : (
               <View style={{ width: 80, height: 64, borderRadius: 6, backgroundColor: colors.primary + '15', justifyContent: 'center', alignItems: 'center' }}>
@@ -437,8 +487,8 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
           <View style={{ flex: 1, alignItems: 'center', padding: 8, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
             <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600', marginBottom: 6 }}>Signature</Text>
             {agreement?.signature_url ? (
-              <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync(agreement.signature_url!)}>
-                <Image source={{ uri: agreement.signature_url }} style={{ width: 80, height: 64, borderRadius: 6, borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff', resizeMode: 'contain' }} />
+              <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync(resolveStorageUrl(agreement.signature_url!))}>
+                <Image source={{ uri: resolveStorageUrl(agreement.signature_url), width: 80, height: 64 }} style={{ width: 80, height: 64, borderRadius: 6, borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff', resizeMode: 'contain' }} />
               </TouchableOpacity>
             ) : (
               <View style={{ width: 80, height: 64, borderRadius: 6, backgroundColor: colors.primary + '15', justifyContent: 'center', alignItems: 'center' }}>
@@ -477,10 +527,13 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
                 variant="secondary"
                 onPress={async () => {
                   try {
-                    const downloadUrl =
+                    const rawDownloadUrl =
                       agreement.docx_download_url ||
                       (await apiClient.get(`/agreements/${agreement.id}/download?doc_type=docx`)).data.download_url;
-                    if (downloadUrl) await WebBrowser.openBrowserAsync(downloadUrl);
+                    const resolved =
+                      resolveStorageUrl(rawDownloadUrl) ||
+                      `${apiClient.defaults.baseURL || ''}/agreements/${agreement.id}/file?doc_type=docx`;
+                    if (resolved) await WebBrowser.openBrowserAsync(resolved);
                   } catch (e: any) {
                     Alert.alert('Download Error', parseApiError(e).message);
                   }
@@ -493,10 +546,13 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
                 variant="secondary"
                 onPress={async () => {
                   try {
-                    const downloadUrl =
+                    const rawDownloadUrl =
                       agreement.pdf_download_url ||
                       (await apiClient.get(`/agreements/${agreement.id}/download?doc_type=pdf`)).data.download_url;
-                    if (downloadUrl) await WebBrowser.openBrowserAsync(downloadUrl);
+                    const resolved =
+                      resolveStorageUrl(rawDownloadUrl) ||
+                      `${apiClient.defaults.baseURL || ''}/agreements/${agreement.id}/file?doc_type=pdf`;
+                    if (resolved) await WebBrowser.openBrowserAsync(resolved);
                   } catch (e: any) {
                     Alert.alert('Download Error', parseApiError(e).message);
                   }
@@ -591,9 +647,19 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
                   {UPLOAD_TYPES.find((t) => t.type === up.upload_type)?.label} · {new Date(up.uploaded_at).toLocaleDateString()}
                 </Text>
               </View>
-              {up.download_url || up.file_url ? (
+              {up.download_url || up.file_url || up.id ? (
                 <TouchableOpacity
-                  onPress={() => WebBrowser.openBrowserAsync((up.download_url || up.file_url)!)}
+                  onPress={async () => {
+                    const fallbackUrl = agreement?.id
+                      ? `${apiClient.defaults.baseURL || ''}/agreements/${agreement.id}/uploads/${up.id}/file`
+                      : null;
+                    const resolved = resolveStorageUrl(up.download_url || up.file_url) || fallbackUrl;
+                    if (resolved) {
+                      await WebBrowser.openBrowserAsync(resolved);
+                    } else {
+                      Alert.alert('Notice', 'Document file is currently unavailable.');
+                    }
+                  }}
                   style={{ padding: 6, marginRight: 6 }}
                 >
                   <Ionicons name="eye-outline" size={18} color={colors.primary} />

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.rate_limit import limiter
@@ -55,6 +55,16 @@ def get_document(document_id: int, current_user: AnyUser, db: DbSession) -> Docu
 def download_document(document_id: int, current_user: AnyUser, db: DbSession) -> DocumentDownloadResponse:
     url = DocumentService(db).get_download_url(document_id, current_user)
     return DocumentDownloadResponse(download_url=url)
+
+
+@router.get("/documents/{document_id}/file")
+def get_document_file(document_id: int, current_user: AnyUser, db: DbSession) -> Response:
+    data, content_type, filename = DocumentService(db).get_document_bytes(document_id, current_user)
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 @router.patch("/documents/{document_id}/status", response_model=DocumentResponse)

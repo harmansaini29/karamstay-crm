@@ -60,10 +60,16 @@ class Agreement(TimestampMixin, SoftDeleteMixin, AuditActorMixin, Base):
 
     @property
     def pdf_download_url(self) -> str | None:
+        from app.core.storage import get_storage
+        storage = get_storage()
+        if self.s3_folder_path:
+            archived_key = f"{self.s3_folder_path}/agreement_{self.id}_{self.template_id}.pdf"
+            if storage.object_exists(key=archived_key):
+                return storage.presign_download(key=archived_key)
         if not self.docx_file_name:
             return None
-        from app.core.storage import get_storage
-        return get_storage().presign_download(key=f"agreements/ag_{self.id}_{self.template_id}.pdf")
+        return storage.presign_download(key=f"agreements/ag_{self.id}_{self.template_id}.pdf")
+
 
 
 class AgreementOfflineUpload(TimestampMixin, AuditActorMixin, Base):
@@ -85,10 +91,9 @@ class AgreementOfflineUpload(TimestampMixin, AuditActorMixin, Base):
 
     @property
     def download_url(self) -> str | None:
-        if self.file_url:
-            return self.file_url
         if self.s3_key:
             from app.core.storage import get_storage
             return get_storage().presign_download(key=self.s3_key)
-        return None
+        return self.file_url
+
 

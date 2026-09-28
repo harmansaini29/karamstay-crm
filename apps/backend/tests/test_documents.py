@@ -280,3 +280,70 @@ def test_owner_can_list_all_documents(client, db_session, fake_storage):
     listing = client.get("/api/v1/documents", headers=headers)
     assert listing.status_code == 200
     assert len(listing.json()) == 1
+
+
+def test_document_upload_infers_extension_from_content_type(client, db_session, fake_storage):
+    """Ensure filenames lacking an extension gracefully infer it from MIME type without HTTP 400 error."""
+    owner = create_user(db_session, role_name="owner", email="owner_ext_test@example.com")
+    headers = auth_headers(client, email="owner_ext_test@example.com")
+    tenant, _ = _seed_tenant_and_property(db_session, owner.id)
+
+    # Presign with extension-less filename
+    presign = client.post(
+        "/api/v1/documents/presign-upload",
+        headers=headers,
+        json={
+            "document_type": "kyc_aadhaar",
+            "file_name": "aadhaar_scan_no_ext",
+            "content_type": "application/pdf",
+            "tenant_id": tenant.id,
+        },
+    )
+    assert presign.status_code == 200
+    file_key = presign.json()["file_key"]
+    assert file_key.endswith(".pdf")
+
+    # Create document with extension-less filename
+    create_res = client.post(
+        "/api/v1/documents",
+        headers=headers,
+        json={
+            "document_type": "kyc_aadhaar",
+            "file_key": file_key,
+            "file_name": "aadhaar_scan_no_ext",
+            "content_type": "application/pdf",
+            "tenant_id": tenant.id,
+        },
+    )
+    assert create_res.status_code == 201
+    assert create_res.json()["file_name"] == "aadhaar_scan_no_ext.pdf"
+
+
+def test_document_direct_base64_upload_fallback(client, db_session, fake_storage):
+    """Ensure direct base64 document upload succeeds and uploads bytes to storage."""
+    import base64
+
+    owner = create_user(db_session, role_name="owner", email="owner_b64_test@example.com")
+    headers = auth_headers(client, email="owner_b64_test@example.com")
+    tenant, _ = _seed_tenant_and_property(db_session, owner.id)
+
+    raw_pdf = b"%PDF-1.4 test lease agreement content"
+    b64_payload = base64.b64encode(raw_pdf).decode()
+
+    create_res = client.post(
+        "/api/v1/documents",
+        headers=headers,
+        json={
+            "document_type": "lease_agreement",
+            "file_name": "direct_lease.pdf",
+            "content_type": "application/pdf",
+            "tenant_id": tenant.id,
+            "file_base64": b64_payload,
+        },
+    )
+    assert create_res.status_code == 201
+    assert create_res.json()["file_name"] == "direct_lease.pdf"
+    # Ensure bytes were stored
+    matching_keys = [k for k in fake_storage.uploaded if "direct_lease.pdf" in k]
+    assert len(matching_keys) == 1
+    assert fake_storage.uploaded[matching_keys[0]] == raw_pdf

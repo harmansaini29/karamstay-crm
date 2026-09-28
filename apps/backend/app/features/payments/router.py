@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.property_payments import get_configured_upi_for_property
 from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.features.auth.dependencies import require_roles
@@ -32,11 +33,13 @@ def _to_invoice_response(inv: Invoice) -> InvoiceResponse:
     res = InvoiceResponse.model_validate(inv)
     try:
         if inv.tenancy and inv.tenancy.unit and inv.tenancy.unit.property:
-            res.payment_upi_id = inv.tenancy.unit.property.payment_upi_id
-            res.property_name = inv.tenancy.unit.property.name
+            prop = inv.tenancy.unit.property
+            res.payment_upi_id = get_configured_upi_for_property(property_name=prop.name, property_id=prop.id)
+            res.property_name = prop.name
     except Exception:
         pass
     return res
+
 
 
 @router.get("/invoices", response_model=list[InvoiceResponse])

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -128,4 +128,35 @@ def download_agreement_file(
     doc_type: str = "docx",
 ) -> dict:
     return AgreementService(db).get_download_url(agreement_id, doc_type, current_user)
+
+
+@router.get("/agreements/{agreement_id}/file")
+def get_agreement_file(
+    agreement_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    doc_type: str = "docx",
+) -> Response:
+    data, content_type, filename = AgreementService(db).get_agreement_file_bytes(agreement_id, doc_type, current_user)
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/agreements/{agreement_id}/uploads/{upload_id}/file")
+def get_upload_file(
+    agreement_id: int,
+    upload_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    data, content_type, filename = AgreementService(db).get_upload_file_bytes(agreement_id, upload_id, current_user)
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
 

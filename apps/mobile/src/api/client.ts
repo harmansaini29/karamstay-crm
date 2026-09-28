@@ -216,6 +216,29 @@ export const parseApiError = (error: any): ApiError => {
   };
 };
 
+/**
+ * Normalizes any storage or download URL (S3, backend stream, or local dev fallback)
+ * into a fully resolvable absolute URL for React Native WebBrowser and Image components.
+ */
+export const resolveStorageUrl = (url?: string | null): string => {
+  if (!url) return '';
+  const baseURL = (apiClient.defaults.baseURL || '').replace(/\/api\/v1\/?$/, '');
+  if (url.includes('s3.local.karamstay.internal')) {
+    const parts = url.split('s3.local.karamstay.internal/');
+    if (parts.length > 1) {
+      const pathWithQuery = parts[1];
+      const slashIdx = pathWithQuery.indexOf('/');
+      const keyAndQuery = slashIdx !== -1 ? pathWithQuery.slice(slashIdx + 1) : pathWithQuery;
+      const cleanKey = keyAndQuery.split('?')[0];
+      return `${apiClient.defaults.baseURL}/storage/file?key=${encodeURIComponent(cleanKey)}`;
+    }
+  }
+  if (url.startsWith('/')) {
+    return `${baseURL}${url}`;
+  }
+  return url;
+};
+
 // Polyfill interceptor for request adapter
 apiClient.interceptors.request.use((config) => {
   const url = config.url || '';
@@ -403,6 +426,7 @@ const polyfillGetMyTenancy = async (config: AxiosRequestConfig) => {
         const prop = propRes.data;
         unitData.property_name = prop.name || '—';
         unitData.property_address = [prop.address, prop.city, prop.state].filter(Boolean).join(', ');
+        unitData.payment_upi_id = prop.payment_upi_id || null;
       } catch (_propErr) {
         // Property fetch failed — leave defaults
       }

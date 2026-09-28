@@ -25,17 +25,20 @@ class PresignUploadResponse(BaseModel):
 
 class DocumentCreate(BaseModel):
     document_type: str = Field(min_length=2, max_length=60)
-    file_key: str = Field(min_length=1, max_length=512)
+    file_key: str | None = Field(default=None, max_length=512)
     file_name: str = Field(min_length=1, max_length=255)
     content_type: str = Field(min_length=3, max_length=120)
     tenant_id: int | None = None
     property_id: int | None = None
     maintenance_ticket_id: int | None = None
+    file_base64: str | None = None
 
     @model_validator(mode="after")
     def _require_owner_target(self) -> "DocumentCreate":
         if self.tenant_id is None and self.property_id is None:
             raise ValueError("Either tenant_id or property_id must be provided")
+        if not self.file_key and not self.file_base64:
+            raise ValueError("Either file_key or file_base64 must be provided")
         return self
 
 
