@@ -745,3 +745,11 @@ def test_rent_update_writes_audit_log(client, db_session):
 
     actions = list(db_session.scalars(sa_select(AuditLog.action)))
     assert "tenancy.rent_update" in actions
+
+
+def test_owner_web_portal_serves_html(client):
+    res = client.get("/owner/")
+    assert res.status_code == 200
+    assert "KaramStay Owner Portal" in res.text
+    assert "Tenancy Agreements & 11-Month Renewal Countdown" in res.text
+

@@ -1,9 +1,11 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.api.v1.router import api_router
@@ -63,6 +65,11 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(api_router, prefix="/api/v1")
+
+    web_dir = Path(__file__).resolve().parent.parent.parent / "web"
+    if web_dir.is_dir():
+        app.mount("/owner", StaticFiles(directory=str(web_dir), html=True), name="owner")
+
     return app
 
 

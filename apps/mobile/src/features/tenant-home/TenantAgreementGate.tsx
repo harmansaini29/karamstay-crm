@@ -24,6 +24,7 @@ interface Agreement {
   tenant_id: number;
   tracker_stage: number;
   status: string;
+  form_data?: Record<string, any> | null;
 }
 
 interface Tenancy {
@@ -70,7 +71,7 @@ export const TenantAgreementGate: React.FC<{ navigation: any }> = ({ navigation 
     // If no agreements at all → go to Dashboard (owner hasn't set it up yet).
     const needsFilling = agreements.find(
       (a) =>
-        (a.tracker_stage === 0 || !a.tracker_stage) &&
+        (a.tracker_stage <= 1 && (!a.form_data || Object.keys(a.form_data || {}).length === 0)) &&
         a.status !== 'docx_generated' &&
         a.status !== 'approved'
     );

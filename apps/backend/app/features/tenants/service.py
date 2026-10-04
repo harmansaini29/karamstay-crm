@@ -473,6 +473,12 @@ class TenantService:
                     else None
                 ),
             }
+        bed_labels = None
+        if tenancy.bed_ids:
+            bed_objs = list(self.db.scalars(select(Bed).where(Bed.id.in_(tenancy.bed_ids))))
+            if bed_objs:
+                bed_labels = [b.bed_no for b in bed_objs]
+
         return {
             "id": tenancy.id,
             "tenant_id": tenancy.tenant_id,
@@ -484,6 +490,7 @@ class TenantService:
             "billing_day": tenancy.billing_day,
             "status": tenancy.status,
             "bed_ids": tenancy.bed_ids,
+            "bed_labels": bed_labels,
             "unit": unit_ctx,
         }
 

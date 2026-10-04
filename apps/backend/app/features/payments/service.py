@@ -10,6 +10,7 @@ from app.core.security import utc_now
 from app.core.storage import get_storage
 from app.features.auth.models import Role, User
 from app.features.notifications.dispatcher import notify_push_all_devices, notify_whatsapp
+from app.features.notifications.models import Notification
 from app.features.payments.models import Expense, Invoice, LedgerEntry, Payment
 from app.features.payments.receipts import generate_receipt_pdf
 from app.features.payments.repository import PaymentRepository
@@ -277,6 +278,16 @@ class PaymentService:
                 template_name=get_whatsapp_template(self.db, KEY_WHATSAPP_PAYMENT_CONFIRMATION_TEMPLATE),
             )
             if tenant.user_id is not None:
+                self.db.add(
+                    Notification(
+                        user_id=tenant.user_id,
+                        channel="in_app",
+                        notification_type="payment_confirmation",
+                        title="Payment Received",
+                        message=message,
+                        status="unread",
+                    )
+                )
                 notify_push_all_devices(
                     self.db,
                     user_id=tenant.user_id,
@@ -292,6 +303,19 @@ class PaymentService:
                 .where(Role.name.in_(["owner", "manager"]), User.is_active.is_(True), User.deleted_at.is_(None))
             )
             for owner_id in self.db.scalars(owner_stmt):
+                self.db.add(
+                    Notification(
+                        user_id=owner_id,
+                        channel="in_app",
+                        notification_type="payment_received_owner",
+                        title=f"Payment Received: {tenant.name}",
+                        message=(
+                            f"Received Rs. {payment.amount:,.2f} from {tenant.name} "
+                            f"({unit.unit_no}) via {payment.mode.upper()}."
+                        ),
+                        status="unread",
+                    )
+                )
                 notify_push_all_devices(
                     self.db,
                     user_id=owner_id,
@@ -302,6 +326,7 @@ class PaymentService:
                         f"({unit.unit_no}) via {payment.mode.upper()}."
                     ),
                 )
+            self.db.commit()
         except Exception:
             logger.exception("Failed to issue receipt/notification for payment %s", payment_id)
 

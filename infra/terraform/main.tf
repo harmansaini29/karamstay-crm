@@ -353,6 +353,18 @@ resource "aws_s3_bucket_lifecycle_configuration" "app" {
   }
 }
 
+resource "aws_s3_bucket_cors_configuration" "app" {
+  bucket = aws_s3_bucket.app.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "POST", "HEAD"]
+    allowed_origins = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3600
+  }
+}
+
 ########################################
 # Secrets â€” SSM Parameter Store (permanently free)
 ########################################

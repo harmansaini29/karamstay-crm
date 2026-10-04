@@ -128,8 +128,8 @@ export const CheckOutForm: React.FC<{ route: any; navigation: any }> = ({ route,
   });
 
   const handleConfirmCheckout = () => {
-    const damageVal = parseFloat(damageAmount) || 0;
-    if (isNaN(damageVal) || damageVal < 0) {
+    const damageVal = isStaff ? 0 : (parseFloat(damageAmount) || 0);
+    if (!isStaff && (isNaN(damageVal) || damageVal < 0)) {
       setErrorMsg('Damage amount must be a positive number');
       return;
     }
@@ -156,7 +156,7 @@ export const CheckOutForm: React.FC<{ route: any; navigation: any }> = ({ route,
   };
 
   // ⚠️ All hooks and hook-like formatters must precede conditional returns (Rules of Hooks)
-  const { maskAmount } = useFinancialMask();
+  const { maskAmount, isStaff } = useFinancialMask();
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', {
@@ -196,14 +196,16 @@ export const CheckOutForm: React.FC<{ route: any; navigation: any }> = ({ route,
             placeholder="YYYY-MM-DD"
           />
 
-          <Input
-            label="Flat Damage Deduction (INR)"
-            value={damageAmount}
-            onChangeText={setDamageAmount}
-            placeholder="0"
-            keyboardType="decimal-pad"
-            error={errorMsg}
-          />
+          {!isStaff && (
+            <Input
+              label="Flat Damage Deduction (INR)"
+              value={damageAmount}
+              onChangeText={setDamageAmount}
+              placeholder="0"
+              keyboardType="decimal-pad"
+              error={errorMsg}
+            />
+          )}
 
           <Input
             label="Damage Notes"
@@ -212,42 +214,46 @@ export const CheckOutForm: React.FC<{ route: any; navigation: any }> = ({ route,
             placeholder="Describe damages if any"
           />
 
-          {/* Settlement breakdown preview */}
-          <Text style={[styles.sectionTitle, { color: colors.text, fontSize: font.h3.fontSize, marginTop: space.md, marginBottom: space.sm }]}>
-            Settlement Preview
-          </Text>
-
-          <Card style={[styles.breakdownCard, { borderColor: colors.border }]}>
-            <View style={styles.breakdownRow}>
-              <Text style={{ color: colors.text, fontSize: font.body.fontSize }}>Security Deposit Held</Text>
-              <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.bodyStrong.fontSize }}>
-                {maskAmount(tenancy?.security_deposit || 0)}
+          {/* Settlement breakdown preview - strictly hidden for staff */}
+          {!isStaff && (
+            <>
+              <Text style={[styles.sectionTitle, { color: colors.text, fontSize: font.h3.fontSize, marginTop: space.md, marginBottom: space.sm }]}>
+                Settlement Preview
               </Text>
-            </View>
 
-            <View style={styles.breakdownRow}>
-              <Text style={{ color: colors.text, fontSize: font.body.fontSize }}>Outstanding Dues</Text>
-              <Text style={{ color: '#EF4444', fontWeight: '600', fontSize: font.bodyStrong.fontSize }}>
-                {maskAmount(outstandingDues)}
-              </Text>
-            </View>
+              <Card style={[styles.breakdownCard, { borderColor: colors.border }]}>
+                <View style={styles.breakdownRow}>
+                  <Text style={{ color: colors.text, fontSize: font.body.fontSize }}>Security Deposit Held</Text>
+                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.bodyStrong.fontSize }}>
+                    {maskAmount(tenancy?.security_deposit || 0)}
+                  </Text>
+                </View>
 
-            <View style={styles.breakdownRow}>
-              <Text style={{ color: colors.text, fontSize: font.body.fontSize }}>Damage Deduction</Text>
-              <Text style={{ color: '#EF4444', fontWeight: '600', fontSize: font.bodyStrong.fontSize }}>
-                - {formatCurrency(parseFloat(damageAmount) || 0)}
-              </Text>
-            </View>
+                <View style={styles.breakdownRow}>
+                  <Text style={{ color: colors.text, fontSize: font.body.fontSize }}>Outstanding Dues</Text>
+                  <Text style={{ color: '#EF4444', fontWeight: '600', fontSize: font.bodyStrong.fontSize }}>
+                    {maskAmount(outstandingDues)}
+                  </Text>
+                </View>
 
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                <View style={styles.breakdownRow}>
+                  <Text style={{ color: colors.text, fontSize: font.body.fontSize }}>Damage Deduction</Text>
+                  <Text style={{ color: '#EF4444', fontWeight: '600', fontSize: font.bodyStrong.fontSize }}>
+                    - {formatCurrency(parseFloat(damageAmount) || 0)}
+                  </Text>
+                </View>
 
-            <View style={[styles.breakdownRow, { marginBottom: 0 }]}>
-              <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.bodyStrong.fontSize }}>Estimated Refund</Text>
-              <Text style={{ color: '#10B981', fontWeight: 'bold', fontSize: font.h2.fontSize }}>
-                {maskAmount(depositRefund)}
-              </Text>
-            </View>
-          </Card>
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+                <View style={[styles.breakdownRow, { marginBottom: 0 }]}>
+                  <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.bodyStrong.fontSize }}>Estimated Refund</Text>
+                  <Text style={{ color: '#10B981', fontWeight: 'bold', fontSize: font.h2.fontSize }}>
+                    {maskAmount(depositRefund)}
+                  </Text>
+                </View>
+              </Card>
+            </>
+          )}
 
           <Button
             label="Confirm & Finalize Checkout"

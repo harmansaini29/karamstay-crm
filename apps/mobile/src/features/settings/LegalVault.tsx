@@ -256,11 +256,18 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
       }
       const asset = result.assets[0];
       const fileName = asset.name || `${stagedDocType}_${Date.now()}.pdf`;
+      let b64: string | undefined = undefined;
+      try {
+        b64 = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: 'base64',
+        });
+      } catch {}
       setStagedAsset({
         uri: asset.uri,
         name: fileName,
         mimeType: asset.mimeType || 'application/octet-stream',
         size: asset.size,
+        base64: b64,
       });
       setStagedTenantId(selectedTenantForUpload?.id || null);
       setSourcePickerVisible(false);

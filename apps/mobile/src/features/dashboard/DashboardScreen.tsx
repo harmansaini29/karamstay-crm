@@ -543,16 +543,51 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
               ))}
             </View>
 
-            {/* Bed Inventory Overview — Owner/Accountant */}
-            <Text style={[styles.sectionTitle, { color: colors.text, fontSize: font.h3.fontSize, marginTop: space.sm }]}>
-              Bed & Unit Inventory
-            </Text>
+            {/* Bed Inventory Overview — Bed Architecture & Vacancy */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.sm, marginBottom: space.xs }}>
+              <Text style={[styles.sectionTitle, { color: colors.text, fontSize: font.h3.fontSize, marginBottom: 0 }]}>
+                {isStaff ? 'Bed Architecture & Vacancy' : 'Bed & Unit Inventory'}
+              </Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Properties')}>
+                <Text style={{ color: colors.primary, fontSize: font.caption.fontSize, fontWeight: '700' }}>
+                  View All Units
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             <Card style={{ borderWidth: 1, padding: 16, marginBottom: 16 }}>
+              {/* Architecture Occupancy Progress Bar */}
+              {ownerTotalBeds > 0 && (
+                <View style={{ marginBottom: 14 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '600' }}>
+                      Overall Bed Occupancy Rate
+                    </Text>
+                    <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>
+                      {Math.round((ownerOccupiedBeds / ownerTotalBeds) * 100)}% ({ownerOccupiedBeds}/{ownerTotalBeds} Beds)
+                    </Text>
+                  </View>
+                  <View style={{ height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' }}>
+                    <View
+                      style={{
+                        height: '100%',
+                        width: `${Math.min(100, Math.round((ownerOccupiedBeds / ownerTotalBeds) * 100))}%`,
+                        backgroundColor: colors.primary,
+                        borderRadius: 3,
+                      }}
+                    />
+                  </View>
+                </View>
+              )}
+
               {/* Single Flats */}
               <View style={styles.inventoryRow}>
                 <View style={styles.inventoryItemLabel}>
                   <Ionicons name="business-outline" size={20} color={colors.primary} style={{ marginRight: 8 }} />
-                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.body.fontSize }}>Single Flats</Text>
+                  <View>
+                    <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.body.fontSize }}>Private Units (Flats)</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 11 }}>{ownerUnitsList.length} total units</Text>
+                  </View>
                 </View>
                 <View style={{ flexDirection: 'row' }}>
                   <View style={[styles.inventoryBadge, { backgroundColor: semanticColor.success.bg, marginRight: 8 }]}>
@@ -572,8 +607,8 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
                     <View style={styles.inventoryItemLabel}>
                       <Ionicons name="bed-outline" size={20} color={colors.primary} style={{ marginRight: 8 }} />
                       <View>
-                        <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.body.fontSize }}>Shared Beds</Text>
-                        <Text style={{ color: colors.textMuted, fontSize: 11 }}>{ownerTotalBeds} total beds</Text>
+                        <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.body.fontSize }}>Bed Inventory Slots</Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 11 }}>{ownerTotalBeds} total beds registered</Text>
                       </View>
                     </View>
                     <View style={{ flexDirection: 'row' }}>
@@ -587,6 +622,29 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
                   </View>
                 </>
               ) : null}
+
+              {isStaff && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => navigation.navigate('Properties')}
+                  style={{
+                    marginTop: 12,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                    backgroundColor: colors.primary + '12',
+                    borderWidth: 1,
+                    borderColor: colors.primary + '40',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                  }}
+                >
+                  <Ionicons name="grid-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+                  <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
+                    Manage Bed Architecture & Vacancy
+                  </Text>
+                </TouchableOpacity>
+              )}
             </Card>
 
             {/* Quick Actions Row */}
@@ -595,25 +653,37 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
             </Text>
             <Card style={styles.quickActionsCard}>
               <View style={styles.quickActionsRow}>
-                <TouchableOpacity
-                  style={[styles.quickActionItem, { width: quickActionWidth }]}
-                  onPress={() => navigation.navigate('Tenants')}
-                >
-                  <View style={[styles.actionIcon, { backgroundColor: colors.primary }]}>
-                    <Ionicons name="person-add" size={20} color="#FFFFFF" />
-                  </View>
-                  <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
-                    Check-in
-                  </Text>
-                </TouchableOpacity>
-
                 {isStaff ? (
                   <>
                     <TouchableOpacity
                       style={[styles.quickActionItem, { width: quickActionWidth }]}
+                      onPress={() => navigation.navigate('TenantForm')}
+                    >
+                      <View style={[styles.actionIcon, { backgroundColor: colors.primary }]}>
+                        <Ionicons name="person-add" size={20} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
+                        Onboard
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.quickActionItem, { width: quickActionWidth }]}
+                      onPress={() => navigation.navigate('CheckInForm')}
+                    >
+                      <View style={[styles.actionIcon, { backgroundColor: '#10B981' }]}>
+                        <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
+                        Assign Bed
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.quickActionItem, { width: quickActionWidth }]}
                       onPress={() => navigation.navigate('Properties')}
                     >
-                      <View style={[styles.actionIcon, { backgroundColor: semanticColor.success.solid }]}>
+                      <View style={[styles.actionIcon, { backgroundColor: '#3B82F6' }]}>
                         <Ionicons name="bed" size={20} color="#FFFFFF" />
                       </View>
                       <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
@@ -629,24 +699,24 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
                         <Ionicons name="document-text" size={20} color="#FFFFFF" />
                       </View>
                       <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
-                        Vault Docs
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.quickActionItem, { width: quickActionWidth }]}
-                      onPress={() => navigation.navigate('More', { screen: 'Maintenance' })}
-                    >
-                      <View style={[styles.actionIcon, { backgroundColor: semanticColor.error.solid }]}>
-                        <Ionicons name="construct" size={20} color="#FFFFFF" />
-                      </View>
-                      <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
-                        Repairs
+                        Legal Vault
                       </Text>
                     </TouchableOpacity>
                   </>
                 ) : (
                   <>
+                    <TouchableOpacity
+                      style={[styles.quickActionItem, { width: quickActionWidth }]}
+                      onPress={() => navigation.navigate('CheckInForm')}
+                    >
+                      <View style={[styles.actionIcon, { backgroundColor: colors.primary }]}>
+                        <Ionicons name="person-add" size={20} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.actionLabel, { color: colors.text, fontSize: font.caption.fontSize }]}>
+                        Check-in
+                      </Text>
+                    </TouchableOpacity>
+
                     <TouchableOpacity
                       style={[styles.quickActionItem, { width: quickActionWidth }]}
                       onPress={navigateToFinance}

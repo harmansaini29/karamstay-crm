@@ -50,6 +50,15 @@ const Stack = createNativeStackNavigator();
 const DashboardStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="DashboardHome" component={DashboardScreen} />
+    <Stack.Screen name="CheckInForm" component={CheckInForm} />
+    <Stack.Screen name="TenantForm" component={TenantForm} />
+    <Stack.Screen name="TenantDetail" component={TenantDetail} />
+    <Stack.Screen name="TenantsList" component={TenantsList} />
+    <Stack.Screen name="UnitDetail" component={UnitDetail} />
+    <Stack.Screen name="PropertyDetail" component={PropertyDetail} />
+    <Stack.Screen name="PropertiesList" component={PropertiesList} />
+    <Stack.Screen name="LegalVault" component={LegalVault} />
+    <Stack.Screen name="Maintenance" component={MaintenanceView} />
   </Stack.Navigator>
 );
 

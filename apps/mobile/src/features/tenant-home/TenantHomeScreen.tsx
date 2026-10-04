@@ -131,7 +131,9 @@ export const TenantHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                     <Ionicons name="bed-outline" size={13} color={colors.primary} style={{ marginRight: 4 }} />
                     <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>
-                      Bed #{tenancyContext.bed_ids.join(', #')}
+                      {Array.isArray(tenancyContext.bed_labels) && tenancyContext.bed_labels.length > 0
+                        ? `Bed ${tenancyContext.bed_labels.join(', ')}`
+                        : `Bed #${tenancyContext.bed_ids.join(', #')}`}
                     </Text>
                   </View>
                 ) : null}

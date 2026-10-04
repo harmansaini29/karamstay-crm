@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KaramStay Owner Portal — Agreements & Vault</title>
+  <style>
+    :root {
+      --primary: #4F46E5;
+      --primary-hover: #4338CA;
+      --primary-light: #EEF2FF;
+      --success: #10B981;
+      --success-light: #ECFDF5;
+      --warning: #F59E0B;
+      --warning-light: #FFFBEB;
+      --danger: #EF4444;
+      --danger-light: #FEF2F2;
+      --slate-50: #F8FAFC;
+      --slate-100: #F1F5F9;
+      --slate-200: #E2E8F0;
+      --slate-300: #CBD5E1;
+      --slate-500: #64748B;
+      --slate-700: #334155;
+      --slate-800: #1E293B;
+      --slate-900: #0F172A;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font);
+      background-color: var(--slate-50);
+      color: var(--slate-900);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background-color: #FFFFFF;
+      border-bottom: 1px solid var(--slate-200);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--primary), #818CF8);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 800;
+      font-size: 1.1rem;
+    }
+
+    .brand-text h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--slate-900);
+      line-height: 1.2;
+    }
+
+    .brand-text p {
+      font-size: 0.75rem;
+      color: var(--slate-500);
+      font-weight: 500;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .user-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--slate-100);
+      padding: 0.4rem 0.8rem;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--slate-700);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease-in-out;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-outline {
+      background-color: white;
+      border-color: var(--slate-300);
+      color: var(--slate-700);
+    }
+    .btn-outline:hover {
+      background-color: var(--slate-100);
+      border-color: var(--slate-400);
+    }
+
+    .btn-sm {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+    }
+
+    .main-container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      width: 100%;
+      flex: 1;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: white;
+      border: 1px solid var(--slate-200);
+      border-radius: 10px;
+      padding: 1.25rem;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+
+    .stat-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate-500);
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-val {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: var(--slate-900);
+    }
+
+    .stat-sub {
+      font-size: 0.8rem;
+      color: var(--slate-500);
+      margin-top: 0.25rem;
+    }
+
+    /* Section Header */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+
+    .section-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--slate-900);
+    }
+
+    /* Tenancies Table Card */
+    .table-card {
+      background: white;
+      border: 1px solid var(--slate-200);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      margin-bottom: 2rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th {
+      background-color: var(--slate-50);
+      color: var(--slate-500);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.875rem 1.25rem;
+      border-bottom: 1px solid var(--slate-200);
+    }
+
+    td {
+      padding: 1rem 1.25rem;
+      font-size: 0.875rem;
+      border-bottom: 1px solid var(--slate-100);
+      vertical-align: middle;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background-color: #FAFAFC;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .badge-success {
+      background-color: var(--success-light);
+      color: #065F46;
+    }
+
+    .badge-warning {
+      background-color: var(--warning-light);
+      color: #92400E;
+    }
+
+    .badge-danger {
+      background-color: var(--danger-light);
+      color: #991B1B;
+    }
+
+    .badge-info {
+      background-color: var(--primary-light);
+      color: #3730A3;
+    }
+
+    /* Dropzone Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .modal-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-box {
+      background: white;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 520px;
+      padding: 1.75rem;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+
+    .modal-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: var(--slate-500);
+    }
+
+    .dropzone {
+      border: 2px dashed var(--slate-300);
+      border-radius: 8px;
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      background: var(--slate-50);
+      transition: all 0.2s ease;
+    }
+
+    .dropzone.dragover {
+      border-color: var(--primary);
+      background: var(--primary-light);
+    }
+
+    .dropzone-icon {
+      font-size: 2.5rem;
+      margin-bottom: 0.75rem;
+      color: var(--primary);
+    }
+
+    .dropzone-text {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--slate-700);
+      margin-bottom: 0.25rem;
+    }
+
+    .dropzone-hint {
+      font-size: 0.8rem;
+      color: var(--slate-500);
+    }
+
+    /* Auth Box */
+    .auth-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      padding: 2rem;
+    }
+
+    .auth-card {
+      background: white;
+      border: 1px solid var(--slate-200);
+      border-radius: 12px;
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
+    }
+
+    .auth-card h2 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+      color: var(--slate-900);
+    }
+
+    .auth-card p {
+      font-size: 0.875rem;
+      color: var(--slate-500);
+      margin-bottom: 1.75rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.825rem;
+      font-weight: 600;
+      color: var(--slate-700);
+      margin-bottom: 0.4rem;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      border: 1px solid var(--slate-300);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      transition: border 0.15s ease;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    }
+
+    /* Toast */
+    .toast-container {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .toast {
+      background: var(--slate-900);
+      color: white;
+      padding: 0.85rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      animation: slideIn 0.2s ease forwards;
+    }
+
+    .toast-success {
+      border-left: 4px solid var(--success);
+    }
+
+    .toast-error {
+      border-left: 4px solid var(--danger);
+    }
+
+    @keyframes slideIn {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo">K</div>
+      <div class="brand-text">
+        <h1>KaramStay</h1>
+        <p>Owner Portal & Legal Document Vault</p>
+      </div>
+    </div>
+    <div class="header-actions" id="headerActions">
+      <div class="user-badge" id="userBadge" style="display: none;">
+        <span>👤</span>
+        <span id="userEmail">owner@karamstay.com</span>
+      </div>
+      <a href="/api/v1/vault/portal" target="_blank" class="btn btn-outline btn-sm" id="vaultPortalBtn" style="display: none;">
+        🗄️ AWS S3 Vault
+      </a>
+      <button class="btn btn-outline btn-sm" id="logoutBtn" style="display: none;">Sign Out</button>
+    </div>
+  </header>
+
+  <!-- Login View -->
+  <div class="auth-container" id="authView">
+    <div class="auth-card">
+      <h2>Owner Sign In</h2>
+      <p>Manage 11-month lease renewals and Word agreement reissues.</p>
+      <form id="loginForm">
+        <div class="form-group">
+          <label class="form-label" for="loginEmail">Email Address</label>
+          <input type="email" id="loginEmail" class="form-input" placeholder="owner@example.com" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" class="form-input" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;" id="loginBtn">
+          Sign In to Portal
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Dashboard View -->
+  <div class="main-container" id="dashboardView" style="display: none;">
+    <!-- Stats Row -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-title">Active Tenancies</div>
+        <div class="stat-val" id="statTotalTenancies">0</div>
+        <div class="stat-sub">Managed under your portfolio</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">11-Month Renewals Due</div>
+        <div class="stat-val" style="color: var(--warning);" id="statRenewalsDue">0</div>
+        <div class="stat-sub">Within next 30 days</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Compiled Word Docs</div>
+        <div class="stat-val" style="color: var(--primary);" id="statWordDocs">0</div>
+        <div class="stat-sub">Ready for 1-click download</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">AWS S3 Vault Status</div>
+        <div class="stat-val" style="color: var(--success);" id="statVaultStatus">Encrypted</div>
+        <div class="stat-sub">Immutable cloud archive active</div>
+      </div>
+    </div>
+
+    <!-- Tenancies Table Header -->
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">Tenancy Agreements & 11-Month Renewal Countdown</h2>
+        <p style="font-size: 0.85rem; color: var(--slate-500); margin-top: 0.2rem;">
+          Download editable Word templates (.docx), re-upload revised terms, and sync directly with tenant mobile app.
+        </p>
+      </div>
+      <button class="btn btn-outline btn-sm" id="refreshBtn">🔄 Refresh Data</button>
+    </div>
+
+    <!-- Tenancies Table -->
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>Tenant & Room</th>
+            <th>Check-in Date</th>
+            <th>11-Month Expiry</th>
+            <th>Countdown</th>
+            <th>Agreement Status</th>
+            <th style="text-align: right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tenanciesTableBody">
+          <tr>
+            <td colspan="6" style="text-align: center; color: var(--slate-500); padding: 3rem;">
+              Loading tenancy and agreement records...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Reissue Upload Modal -->
+  <div class="modal-backdrop" id="uploadModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">Reissue Word Agreement (.docx)</h3>
+        <button class="close-btn" id="closeModalBtn">&times;</button>
+      </div>
+      <p style="font-size: 0.85rem; color: var(--slate-500); margin-bottom: 1.25rem;">
+        Upload your revised Word document (.docx). Once uploaded, it will immediately overwrite the current agreement and sync across both web and tenant mobile apps.
+      </p>
+
+      <div class="dropzone" id="dropzone">
+        <div class="dropzone-icon">📄</div>
+        <div class="dropzone-text">Drag & drop your .docx file here</div>
+        <div class="dropzone-hint">or click to browse from your computer</div>
+        <input type="file" id="fileInput" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display: none;">
+      </div>
+
+      <div id="stagedFileInfo" style="display: none; margin-top: 1rem; padding: 0.75rem; background: var(--slate-100); border-radius: 6px; font-size: 0.85rem;">
+        <strong>Selected:</strong> <span id="stagedFileName"></span>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+        <button class="btn btn-outline" id="cancelUploadBtn">Cancel</button>
+        <button class="btn btn-primary" id="submitUploadBtn" disabled>Upload & Reissue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    // State
+    const API_BASE = '/api/v1';
+    let authToken = localStorage.getItem('karamstay_token') || null;
+    let currentUser = null;
+    let currentAgreements = [];
+    let currentTenancies = [];
+    let activeUploadAgreementId = null;
+    let stagedBase64File = null;
+    let stagedFileName = null;
+
+    // Toast Utility
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.innerHTML = `<span>${type === 'success' ? '✓' : '⚠️'}</span> <span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    // Auth Helper
+    function authHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      };
+    }
+
+    // App Init
+    async function init() {
+      if (authToken) {
+        try {
+          await fetchUserData();
+          showDashboard();
+          await loadData();
+        } catch (e) {
+          logout();
+        }
+      } else {
+        showLogin();
+      }
+    }
+
+    function showLogin() {
+      document.getElementById('authView').style.display = 'flex';
+      document.getElementById('dashboardView').style.display = 'none';
+      document.getElementById('userBadge').style.display = 'none';
+      document.getElementById('logoutBtn').style.display = 'none';
+      document.getElementById('vaultPortalBtn').style.display = 'none';
+    }
+
+    function showDashboard() {
+      document.getElementById('authView').style.display = 'none';
+      document.getElementById('dashboardView').style.display = 'block';
+      document.getElementById('userBadge').style.display = 'flex';
+      document.getElementById('logoutBtn').style.display = 'inline-flex';
+      document.getElementById('vaultPortalBtn').style.display = 'inline-flex';
+    }
+
+    function logout() {
+      authToken = null;
+      localStorage.removeItem('karamstay_token');
+      showLogin();
+    }
+
+    async function fetchUserData() {
+      const res = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders() });
+      if (!res.ok) throw new Error('Auth invalid');
+      currentUser = await res.json();
+      document.getElementById('userEmail').textContent = currentUser.email || 'Owner';
+    }
+
+    // Load Data
+    async function loadData() {
+      try {
+        const [tenanciesRes, agreementsRes] = await Promise.all([
+          fetch(`${API_BASE}/tenancies`, { headers: authHeaders() }),
+          fetch(`${API_BASE}/agreements`, { headers: authHeaders() })
+        ]);
+
+        if (tenanciesRes.ok && agreementsRes.ok) {
+          currentTenancies = await tenanciesRes.json();
+          currentAgreements = await agreementsRes.json();
+          renderDashboard();
+        } else {
+          showToast('Failed to load portfolio tenancies', 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    // 11-Month Lease Calculation
+    function calculateLease(startDateStr) {
+      if (!startDateStr) return { expiryDate: '—', daysLeft: 0, status: 'unknown' };
+      const start = new Date(startDateStr);
+      // 11 Months calculation
+      const expiry = new Date(start);
+      expiry.setMonth(expiry.getMonth() + 11);
+
+      const now = new Date();
+      const diffTime = expiry - now;
+      const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      return {
+        expiryDate: expiry.toISOString().split('T')[0],
+        daysLeft,
+        isExpired: daysLeft < 0,
+        isRenewalDue: daysLeft >= 0 && daysLeft <= 30
+      };
+    }
+
+    function renderDashboard() {
+      const tbody = document.getElementById('tenanciesTableBody');
+      tbody.innerHTML = '';
+
+      let renewalsDueCount = 0;
+      let wordDocsCount = 0;
+
+      if (currentTenancies.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--slate-500); padding: 3rem;">No active tenancies found in database.</td></tr>`;
+        document.getElementById('statTotalTenancies').textContent = '0';
+        document.getElementById('statRenewalsDue').textContent = '0';
+        document.getElementById('statWordDocs').textContent = '0';
+        return;
+      }
+
+      currentTenancies.forEach(t => {
+        const lease = calculateLease(t.start_date);
+        if (lease.isRenewalDue) renewalsDueCount++;
+
+        // Find linked agreement
+        const ag = currentAgreements.find(a => a.tenancy_id === t.id);
+        if (ag && ag.docx_download_url) wordDocsCount++;
+
+        let badgeClass = 'badge-success';
+        let badgeText = `${lease.daysLeft} days left`;
+        if (lease.isExpired) {
+          badgeClass = 'badge-danger';
+          badgeText = `Expired (${Math.abs(lease.daysLeft)}d ago)`;
+        } else if (lease.isRenewalDue) {
+          badgeClass = 'badge-warning';
+          badgeText = `Renewal Due (${lease.daysLeft}d left)`;
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>
+            <div style="font-weight: 700; color: var(--slate-900);">${t.tenant?.name || 'Tenant #' + t.tenant_id}</div>
+            <div style="font-size: 0.75rem; color: var(--slate-500); margin-top: 2px;">
+              Unit ${t.unit?.unit_no || t.unit_id} ${t.bed_labels ? '• Bed ' + t.bed_labels.join(', ') : ''}
+            </div>
+          </td>
+          <td>${t.start_date || '—'}</td>
+          <td style="font-weight: 600;">${lease.expiryDate}</td>
+          <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+          <td>
+            <span class="badge badge-info">${ag ? ag.status.toUpperCase() : 'NO AGREEMENT'}</span>
+            ${ag?.tracker_stage ? `<span style="font-size: 0.75rem; color: var(--slate-500); margin-left: 6px;">Stage ${ag.tracker_stage}/4</span>` : ''}
+          </td>
+          <td style="text-align: right;">
+            <div style="display: inline-flex; gap: 0.5rem; justify-content: flex-end;">
+              ${ag && (ag.docx_download_url || ag.docx_file_name) ? `
+                <a href="${ag.docx_download_url || `/api/v1/agreements/${ag.id}/download?doc_type=docx`}"
+                   target="_blank" class="btn btn-outline btn-sm" title="Download Word file">
+                  📥 Download Word
+                </a>
+              ` : `
+                <button class="btn btn-outline btn-sm" disabled title="KYC form not yet compiled into Word">
+                  Pending KYC
+                </button>
+              `}
+              ${ag ? `
+                <button class="btn btn-primary btn-sm" onclick="openReissueModal(${ag.id})">
+                  🔄 Reissue Word
+                </button>
+              ` : ''}
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('statTotalTenancies').textContent = currentTenancies.length;
+      document.getElementById('statRenewalsDue').textContent = renewalsDueCount;
+      document.getElementById('statWordDocs').textContent = wordDocsCount;
+    }
+
+    // Modal & Upload Handlers
+    window.openReissueModal = function(agreementId) {
+      activeUploadAgreementId = agreementId;
+      stagedBase64File = null;
+      stagedFileName = null;
+      document.getElementById('stagedFileInfo').style.display = 'none';
+      document.getElementById('submitUploadBtn').disabled = true;
+      document.getElementById('uploadModal').classList.add('open');
+    };
+
+    function closeModal() {
+      document.getElementById('uploadModal').classList.remove('open');
+      activeUploadAgreementId = null;
+      stagedBase64File = null;
+      stagedFileName = null;
+    }
+
+    document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+    document.getElementById('cancelUploadBtn').addEventListener('click', closeModal);
+
+    // Drag and Drop
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+
+    dropzone.addEventListener('click', () => fileInput.click());
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    });
+
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) {
+        processFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        processFile(e.target.files[0]);
+      }
+    });
+
+    function processFile(file) {
+      if (!file.name.endsWith('.docx')) {
+        showToast('Please select a valid Word document (.docx)', 'error');
+        return;
+      }
+      stagedFileName = file.name;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const base64 = e.target.result.split(',')[1];
+        stagedBase64File = base64;
+        document.getElementById('stagedFileName').textContent = file.name;
+        document.getElementById('stagedFileInfo').style.display = 'block';
+        document.getElementById('submitUploadBtn').disabled = false;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Submit Upload Reissue
+    document.getElementById('submitUploadBtn').addEventListener('click', async () => {
+      if (!activeUploadAgreementId || !stagedBase64File) return;
+
+      const btn = document.getElementById('submitUploadBtn');
+      btn.disabled = true;
+      btn.textContent = 'Uploading & Reissuing...';
+
+      try {
+        const res = await fetch(`${API_BASE}/agreements/${activeUploadAgreementId}/replace-docx`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            file_name: stagedFileName,
+            file_base64: stagedBase64File
+          })
+        });
+
+        if (res.ok) {
+          showToast(`Agreement #${activeUploadAgreementId} reissued successfully! Synced across web & mobile.`);
+          closeModal();
+          await loadData();
+        } else {
+          const err = await res.json();
+          showToast(err.detail || 'Failed to replace Word agreement', 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Upload & Reissue';
+      }
+    });
+
+    // Login Form Submit
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+      const btn = document.getElementById('loginBtn');
+
+      btn.disabled = true;
+      btn.textContent = 'Signing In...';
+
+      try {
+        const res = await fetch(`${API_BASE}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          authToken = data.access_token;
+          localStorage.setItem('karamstay_token', authToken);
+          await fetchUserData();
+          showDashboard();
+          await loadData();
+          showToast('Welcome to KaramStay Owner Portal!');
+        } else {
+          const err = await res.json();
+          showToast(err.detail || 'Invalid email or password', 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In to Portal';
+      }
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+    document.getElementById('refreshBtn').addEventListener('click', async () => {
+      showToast('Refreshing portfolio data...');
+      await loadData();
+    });
+
+    // Start
+    init();
+  </script>
+</body>
+</html>

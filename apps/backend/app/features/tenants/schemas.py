@@ -166,6 +166,7 @@ class TenancyContextResponse(BaseModel):
     billing_day: int = 1
     status: str = "pending_assignment"
     bed_ids: list[int] | None = None
+    bed_labels: list[str] | None = None
     unit: TenancyUnitContext | None = None
 
 

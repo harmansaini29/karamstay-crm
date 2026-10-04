@@ -866,7 +866,7 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
                 onPress={() => initAgreementMutation.mutate()}
               />
             </Card>
-          ) : agreement.status === 'pending_tenant_fill' || agreement.tracker_stage === 0 ? (
+          ) : (!agreement.docx_file_name && (agreement.status === 'form_submitted' || agreement.status === 'pending_tenant_fill' || agreement.tracker_stage <= 1)) ? (
             <Card style={{ borderWidth: 1, padding: space.xl, alignItems: 'center' }}>
               <Ionicons name="time-outline" size={48} color="#F59E0B" style={{ marginBottom: 12 }} />
               <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.h3.fontSize, textAlign: 'center', marginBottom: 6 }}>
