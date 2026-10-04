@@ -8,6 +8,7 @@ from app.features.agreements.schemas import (
     AgreementApproveResponse,
     AgreementCreate,
     AgreementKycSubmit,
+    AgreementReplaceDocxRequest,
     AgreementResponse,
     AgreementUpdate,
     OfflineUploadCreate,
@@ -76,6 +77,16 @@ def compile_docx(
     db: Annotated[Session, Depends(get_db)],
 ):
     return AgreementService(db).compile_docx(agreement_id, current_user)
+
+
+@router.post("/agreements/{agreement_id}/replace-docx", response_model=AgreementResponse)
+def replace_docx(
+    agreement_id: int,
+    payload: AgreementReplaceDocxRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> AgreementResponse:
+    return AgreementService(db).replace_docx(agreement_id, payload, current_user)
 
 
 @router.post("/agreements/{agreement_id}/approve-and-archive", response_model=AgreementApproveResponse)

@@ -16,6 +16,7 @@ from app.features.agreements.schemas import (
     AgreementApproveResponse,
     AgreementCreate,
     AgreementKycSubmit,
+    AgreementReplaceDocxRequest,
     AgreementResponse,
     AgreementUpdate,
     OfflineUploadCreate,
@@ -310,6 +311,56 @@ class AgreementService:
         agreement.tracker_stage = max(agreement.tracker_stage, 2)
         agreement.docx_file_name = f"agreement_{agreement_id}_{agreement.template_id}.docx"
         agreement.docx_generated_at = utc_now()
+        agreement.updated_by_id = current_user.id
+        self.db.commit()
+        self.db.refresh(agreement)
+        return agreement
+
+    def replace_docx(
+        self, agreement_id: int, payload: AgreementReplaceDocxRequest, current_user: User
+    ) -> Agreement:
+        """Replace or reissue a Word (.docx) agreement with an updated or edited document."""
+        self._assert_access(current_user)
+        agreement = self.get_agreement(agreement_id, current_user)
+
+        file_name = payload.file_name or f"agreement_{agreement.id}_{agreement.template_id}.docx"
+        if not file_name.lower().endswith(".docx"):
+            file_name = f"{file_name}.docx"
+
+        docx_key = f"agreements/ag_{agreement.id}_{agreement.template_id}.docx"
+
+        if payload.file_base64:
+            raw_bytes = safe_b64decode(payload.file_base64)
+            self.storage.upload_bytes(
+                key=docx_key,
+                data=raw_bytes,
+                content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+            # If agreement was archived into an S3 folder path, sync the new docx there too
+            if agreement.s3_folder_path:
+                archive_key = f"{agreement.s3_folder_path}/{file_name}"
+                try:
+                    self.storage.upload_bytes(
+                        key=archive_key,
+                        data=raw_bytes,
+                        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
+                except Exception:
+                    pass
+        elif payload.file_key and payload.file_key != docx_key:
+            raw = self.storage.get_bytes(key=payload.file_key)
+            if raw:
+                self.storage.upload_bytes(
+                    key=docx_key,
+                    data=raw,
+                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+
+        agreement.docx_file_name = file_name
+        agreement.docx_generated_at = utc_now()
+        agreement.tracker_stage = max(agreement.tracker_stage, 2)
+        if agreement.status in ("pending_tenant_fill", "form_submitted"):
+            agreement.status = "docx_generated"
         agreement.updated_by_id = current_user.id
         self.db.commit()
         self.db.refresh(agreement)

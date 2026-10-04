@@ -11,7 +11,7 @@ from app.core.security import utc_now
 from app.features.agreements.models import Agreement
 from app.features.auth.models import Role, User
 from app.features.notifications.models import Notification
-from app.features.payments.models import LedgerEntry
+from app.features.payments.models import Invoice, LedgerEntry
 from app.features.properties.models import Bed, InventoryItem
 from app.features.properties.repository import PropertyRepository
 from app.features.tenants.models import Tenancy, Tenant
@@ -216,6 +216,7 @@ class TenantService:
             start_date=payload.start_date,
             monthly_rent=payload.monthly_rent,
             security_deposit=payload.security_deposit,
+            paperwork_fee=payload.paperwork_fee,
             billing_day=payload.billing_day,
             bed_ids=payload.bed_ids,
             status="active",
@@ -254,10 +255,23 @@ class TenantService:
                     updated_by_id=current_user.id,
                 ),
             )
+            if payload.paperwork_fee > Decimal("0.00"):
+                self.repository.add_ledger_entry(
+                    LedgerEntry(
+                        tenancy_id=tenancy.id,
+                        entry_type="paperwork_fee",
+                        direction="debit",
+                        amount=payload.paperwork_fee,
+                        occurred_on=payload.start_date,
+                        description="Paperwork and onboarding fee due on check-in",
+                        created_by_id=current_user.id,
+                        updated_by_id=current_user.id,
+                    ),
+                )
         else:
-            # Booking-time dues only (deposit + first month) split across installments;
+            # Booking-time dues only (deposit + first month + paperwork_fee) split across installments;
             # recurring monthly rent afterward is unaffected and still billed per period.
-            total_due = payload.security_deposit + payload.monthly_rent
+            total_due = payload.security_deposit + payload.monthly_rent + payload.paperwork_fee
             n = payload.installment_count
             base_amount = (total_due / n).quantize(Decimal("0.01"))
             allocated = Decimal("0.00")
@@ -277,6 +291,34 @@ class TenantService:
                         updated_by_id=current_user.id,
                     ),
                 )
+
+        # Auto-generate initial invoice for check-in dues
+        billing_period = payload.start_date.strftime("%Y-%m")
+        existing_invoice = self.db.scalar(
+            select(Invoice).where(
+                Invoice.tenancy_id == tenancy.id,
+                Invoice.billing_period == billing_period,
+                Invoice.deleted_at.is_(None),
+            )
+        )
+        if existing_invoice is None:
+            initial_due = payload.monthly_rent + payload.security_deposit + payload.paperwork_fee
+            initial_invoice_amount = (
+                (initial_due / payload.installment_count).quantize(Decimal("0.01"))
+                if payload.installment_count > 1
+                else initial_due
+            )
+            if initial_invoice_amount > Decimal("0.00"):
+                initial_invoice = Invoice(
+                    tenancy_id=tenancy.id,
+                    billing_period=billing_period,
+                    due_date=payload.start_date,
+                    amount=initial_invoice_amount,
+                    status="pending",
+                    created_by_id=current_user.id,
+                    updated_by_id=current_user.id,
+                )
+                self.db.add(initial_invoice)
 
         unit.status = "occupied"
         unit.updated_by_id = current_user.id
@@ -298,6 +340,36 @@ class TenantService:
                 updated_by_id=current_user.id,
             )
             self.db.add(new_agreement)
+
+        # Dispatch in-app check-in notifications to tenant and owner/managers
+        if tenant.user_id:
+            self.db.add(
+                Notification(
+                    user_id=tenant.user_id,
+                    channel="in_app",
+                    notification_type="check_in_confirmed",
+                    title="Check-In Confirmed",
+                    message=f"Welcome {tenant.name}! Your check-in for Unit {unit.unit_no} has been confirmed.",
+                    status="unread",
+                )
+            )
+        owner_manager_stmt = (
+            select(User.id)
+            .join(Role, Role.id == User.role_id)
+            .where(Role.name.in_(["owner", "manager"]), User.is_active.is_(True), User.deleted_at.is_(None))
+        )
+        for u_id in self.db.scalars(owner_manager_stmt):
+            if u_id != current_user.id:
+                self.db.add(
+                    Notification(
+                        user_id=u_id,
+                        channel="in_app",
+                        notification_type="tenant_checked_in",
+                        title="Tenant Checked In",
+                        message=f"{tenant.name} has checked in to Unit {unit.unit_no}.",
+                        status="unread",
+                    )
+                )
 
         self.audit.record(
             user_id=current_user.id,
@@ -355,6 +427,7 @@ class TenantService:
                 "start_date": None,
                 "monthly_rent": Decimal("0.00"),
                 "security_deposit": Decimal("0.00"),
+                "paperwork_fee": Decimal("0.00"),
                 "billing_day": 1,
                 "status": "pending_assignment",
                 "bed_ids": None,
@@ -369,6 +442,7 @@ class TenantService:
                 "start_date": None,
                 "monthly_rent": Decimal("0.00"),
                 "security_deposit": Decimal("0.00"),
+                "paperwork_fee": Decimal("0.00"),
                 "billing_day": 1,
                 "status": "pending_assignment",
                 "bed_ids": None,
@@ -406,6 +480,7 @@ class TenantService:
             "start_date": tenancy.start_date,
             "monthly_rent": tenancy.monthly_rent,
             "security_deposit": tenancy.security_deposit,
+            "paperwork_fee": tenancy.paperwork_fee,
             "billing_day": tenancy.billing_day,
             "status": tenancy.status,
             "bed_ids": tenancy.bed_ids,

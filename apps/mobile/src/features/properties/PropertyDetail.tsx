@@ -131,7 +131,7 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
               Unit {item.unit_no}
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize }}>
-              {item.unit_type.toUpperCase()} · Rent: {maskAmount(item.rent)}
+              {item.unit_type.toUpperCase()}{user?.role?.name !== 'staff' ? ` · Rent: ${maskAmount(item.rent)}` : ''}
             </Text>
           </View>
           <Badge status={item.status} />

@@ -301,6 +301,61 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
+  const [isReplacingDocx, setIsReplacingDocx] = useState(false);
+
+  const handleReplaceDocx = async () => {
+    if (!agreement) return;
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/msword',
+        ],
+        copyToCacheDirectory: true,
+      });
+      if (res.canceled || !res.assets || res.assets.length === 0) return;
+      setIsReplacingDocx(true);
+      const asset = res.assets[0];
+      const fileName = asset.name || `agreement_${agreement.id}.docx`;
+
+      let b64: string | null = null;
+      try {
+        b64 = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+        });
+      } catch {
+        try {
+          const resp = await fetch(asset.uri);
+          const blob = await resp.blob();
+          b64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const r = reader.result as string;
+              resolve(r.includes(',') ? r.split(',')[1] : r);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch {}
+      }
+
+      if (!b64) throw new Error('Could not read Word file');
+
+      await apiClient.post(`/agreements/${agreement.id}/replace-docx`, {
+        file_name: fileName,
+        file_base64: b64,
+      });
+
+      qc.invalidateQueries({ queryKey: ['agreements', 'tenant', tenantId] });
+      qc.invalidateQueries({ queryKey: ['agreement-uploads', agreement.id] });
+      Alert.alert('Agreement Updated', `Word agreement replaced with "${fileName}". Synced across mobile app & web portal.`);
+    } catch (err: any) {
+      Alert.alert('Replace Failed', parseApiError(err).message || 'Unable to update Word agreement');
+    } finally {
+      setIsReplacingDocx(false);
+    }
+  };
+
   const handleOfflineUpload = async (targetType?: OfflineUpload['upload_type']) => {
     if (!agreement) return;
     const typeToUpload = targetType || uploadType;
@@ -605,17 +660,31 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
               />
             </View>
           </View>
+          <Button
+            label={isReplacingDocx ? "Uploading Word File..." : "Replace / Reissue Word Agreement (.docx)"}
+            variant="primary"
+            disabled={isReplacingDocx}
+            onPress={handleReplaceDocx}
+            style={{ marginTop: 12 }}
+          />
         </View>
       ) : (
         <View>
           <Text style={{ color: colors.textMuted, fontSize: font.body.fontSize, marginBottom: 12 }}>
-            The agreement document has not been compiled yet. Compile it from the tenant's submitted form data.
+            The agreement document has not been compiled yet. Compile it from the tenant's submitted form data or upload an edited Word file directly.
           </Text>
           <Button
             label="Compile Agreement (.docx & .pdf)"
             loading={compileMutation.isPending}
             disabled={!agreement || agreement.tracker_stage < 1}
             onPress={() => agreement && compileMutation.mutate(agreement.id)}
+          />
+          <Button
+            label={isReplacingDocx ? "Uploading Word File..." : "Upload Existing Word File (.docx)"}
+            variant="secondary"
+            disabled={isReplacingDocx}
+            onPress={handleReplaceDocx}
+            style={{ marginTop: 10 }}
           />
         </View>
       )}

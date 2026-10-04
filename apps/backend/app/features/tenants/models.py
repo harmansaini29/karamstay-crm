@@ -43,6 +43,7 @@ class Tenancy(TimestampMixin, SoftDeleteMixin, AuditActorMixin, Base):
     move_out_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     monthly_rent: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     security_deposit: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    paperwork_fee: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"))
     billing_day: Mapped[int] = mapped_column(nullable=False, default=1)
     status: Mapped[str] = mapped_column(String(24), index=True, nullable=False, default="active")
     bed_ids: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)

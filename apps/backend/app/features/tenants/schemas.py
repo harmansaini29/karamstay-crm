@@ -118,6 +118,7 @@ class TenancyCreate(BaseModel):
     start_date: date
     monthly_rent: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
     security_deposit: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
+    paperwork_fee: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=12, decimal_places=2)
     billing_day: int = Field(default=1, ge=1, le=28)
     bed_ids: list[int] | None = Field(default=None, min_length=1)
     installment_count: int = Field(default=1, ge=1, le=12)
@@ -134,6 +135,7 @@ class TenancyResponse(BaseModel):
     move_out_date: date | None
     monthly_rent: Decimal
     security_deposit: Decimal
+    paperwork_fee: Decimal = Decimal("0.00")
     billing_day: int
     status: str
     bed_ids: list[int] | None
@@ -160,6 +162,7 @@ class TenancyContextResponse(BaseModel):
     start_date: date | None = None
     monthly_rent: Decimal = Decimal("0.00")
     security_deposit: Decimal = Decimal("0.00")
+    paperwork_fee: Decimal = Decimal("0.00")
     billing_day: int = 1
     status: str = "pending_assignment"
     bed_ids: list[int] | None = None

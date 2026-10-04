@@ -351,27 +351,29 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
             </View>
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-            <View style={styles.profileGrid}>
-              <View style={styles.gridCol}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={[styles.label, { color: colors.textMuted }]}>Monthly Rent</Text>
-                  {isOwner ? (
-                    <TouchableOpacity onPress={handleOpenEditRent} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                      <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Edit</Text>
-                    </TouchableOpacity>
-                  ) : null}
+            {!isStaff ? (
+              <View style={styles.profileGrid}>
+                <View style={styles.gridCol}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={[styles.label, { color: colors.textMuted }]}>Monthly Rent</Text>
+                    {isOwner ? (
+                      <TouchableOpacity onPress={handleOpenEditRent} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                        <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Edit</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.val, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
+                    {maskAmount(tenancy.monthly_rent)}
+                  </Text>
                 </View>
-                <Text style={[styles.val, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
-                  {maskAmount(tenancy.monthly_rent)}
-                </Text>
+                <View style={styles.gridCol}>
+                  <Text style={[styles.label, { color: colors.textMuted }]}>Security Deposit</Text>
+                  <Text style={[styles.val, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
+                    {maskAmount(tenancy.security_deposit)}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.gridCol}>
-                <Text style={[styles.label, { color: colors.textMuted }]}>Security Deposit</Text>
-                <Text style={[styles.val, { color: colors.text, fontSize: font.bodyStrong.fontSize }]}>
-                  {maskAmount(tenancy.security_deposit)}
-                </Text>
-              </View>
-            </View>
+            ) : null}
 
             <View style={styles.profileGrid}>
               <View style={styles.gridCol}>
@@ -427,17 +429,19 @@ export const TenantDetail: React.FC<{ route: any; navigation: any }> = ({ route,
             ) : null}
 
             <View style={[styles.buttonRow, { marginTop: space.md }]}>
-              <Button
-                label="Check Ledger"
-                onPress={() => navigateToLedger(tenancy.id)}
-                variant="secondary"
-                style={{ flex: 1, marginRight: space.sm }}
-              />
+              {!isStaff ? (
+                <Button
+                  label="Check Ledger"
+                  onPress={() => navigateToLedger(tenancy.id)}
+                  variant="secondary"
+                  style={{ flex: 1, marginRight: space.sm }}
+                />
+              ) : null}
               <Button
                 label="Check-out"
                 onPress={() => navigation.navigate('CheckOutForm', { tenancyId: tenancy.id })}
                 variant="destructive"
-                style={{ flex: 1, marginLeft: space.sm }}
+                style={{ flex: 1, marginLeft: !isStaff ? space.sm : 0 }}
               />
             </View>
             {/* Legal Agreement Workspace & Sync */}

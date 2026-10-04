@@ -21,10 +21,50 @@ import { LoadingSkeleton, ErrorState, EmptyState } from '../../components/States
 import { Ionicons } from '@expo/vector-icons';
 import { Badge } from '../../components/Badge';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import * as WebBrowser from 'expo-web-browser';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
+
+export const DOC_TYPE_OPTIONS = [
+  {
+    label: 'Aadhaar Card',
+    value: 'aadhaar',
+    icon: 'card-outline' as const,
+    description: 'Government photo identification proof',
+  },
+  {
+    label: 'Police NOC / Verification',
+    value: 'police_noc',
+    icon: 'shield-checkmark-outline' as const,
+    description: 'Police verification clearance certificate',
+  },
+  {
+    label: 'Stamp Paper',
+    value: 'stamp_paper',
+    icon: 'newspaper-outline' as const,
+    description: 'E-stamp / physical legal stamp paper',
+  },
+  {
+    label: 'Tenant Photo',
+    value: 'tenant_photo',
+    icon: 'person-outline' as const,
+    description: 'Passport-size or profile photograph',
+  },
+  {
+    label: 'Lease Agreement',
+    value: 'lease_agreement',
+    icon: 'document-text-outline' as const,
+    description: 'Signed tenancy rental agreement (.pdf / .docx)',
+  },
+  {
+    label: 'Other Document',
+    value: 'other',
+    icon: 'folder-outline' as const,
+    description: 'Any other legal certificate or document',
+  },
+] as const;
 
 interface DocumentItem {
   id: number;
@@ -59,6 +99,10 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [tenantPickerVisible, setTenantPickerVisible] = useState(false);
+  const [docTypePickerVisible, setDocTypePickerVisible] = useState(false);
+  const [sourcePickerVisible, setSourcePickerVisible] = useState(false);
+  const [selectedTenantForUpload, setSelectedTenantForUpload] = useState<{ id: number; name: string } | null>(null);
+  const [stagedDocType, setStagedDocType] = useState<string>('lease_agreement');
 
   // Staged document preview & discard before S3 upload
   const [stagedAsset, setStagedAsset] = useState<any>(null);
@@ -123,39 +167,115 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
     }
   };
 
-  const handlePickDocument = async (tenantId: number) => {
-    // Mutex guard: prevents double-tap or concurrent picker sessions
+  const handleCameraCapture = async () => {
     if (isPickingRef.current || isUploading) return;
     isPickingRef.current = true;
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission required', 'Camera access is needed to capture photos of legal documents.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        allowsEditing: false,
+        base64: true,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+      const asset = result.assets[0];
+      const fileName = asset.fileName || `${stagedDocType}_${Date.now()}.jpg`;
+      setStagedAsset({
+        uri: asset.uri,
+        name: fileName,
+        mimeType: asset.mimeType || 'image/jpeg',
+        base64: asset.base64,
+        width: asset.width,
+        height: asset.height,
+      });
+      setStagedTenantId(selectedTenantForUpload?.id || null);
+      setSourcePickerVisible(false);
+      setPreviewModalVisible(true);
+    } catch (pickerErr: any) {
+      Alert.alert('Camera Error', pickerErr?.message || 'Could not open camera.');
+    } finally {
+      isPickingRef.current = false;
+    }
+  };
 
-    let asset: any = null;
+  const handleGalleryPick = async () => {
+    if (isPickingRef.current || isUploading) return;
+    isPickingRef.current = true;
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission required', 'Gallery access is needed to select documents.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        allowsEditing: false,
+        base64: true,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+      const asset = result.assets[0];
+      const fileName = asset.fileName || `${stagedDocType}_${Date.now()}.jpg`;
+      setStagedAsset({
+        uri: asset.uri,
+        name: fileName,
+        mimeType: asset.mimeType || 'image/jpeg',
+        base64: asset.base64,
+        width: asset.width,
+        height: asset.height,
+      });
+      setStagedTenantId(selectedTenantForUpload?.id || null);
+      setSourcePickerVisible(false);
+      setPreviewModalVisible(true);
+    } catch (pickerErr: any) {
+      Alert.alert('Gallery Error', pickerErr?.message || 'Could not open photo gallery.');
+    } finally {
+      isPickingRef.current = false;
+    }
+  };
+
+  const handleFilePick = async () => {
+    if (isPickingRef.current || isUploading) return;
+    isPickingRef.current = true;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
         copyToCacheDirectory: true,
       });
-
       if (result.canceled || !result.assets || result.assets.length === 0) {
-        return; // user cancelled
+        return;
       }
-      asset = result.assets[0];
+      const asset = result.assets[0];
+      const fileName = asset.name || `${stagedDocType}_${Date.now()}.pdf`;
+      setStagedAsset({
+        uri: asset.uri,
+        name: fileName,
+        mimeType: asset.mimeType || 'application/octet-stream',
+        size: asset.size,
+      });
+      setStagedTenantId(selectedTenantForUpload?.id || null);
+      setSourcePickerVisible(false);
+      setPreviewModalVisible(true);
     } catch (pickerErr: any) {
       Alert.alert('Picker Error', pickerErr?.message || 'Could not open document picker.');
-      return;
     } finally {
       isPickingRef.current = false;
     }
-
-    if (!asset) return;
-    // Stage asset for review & discard before sending to cloud
-    setStagedAsset(asset);
-    setStagedTenantId(tenantId);
-    setPreviewModalVisible(true);
   };
 
   const handleDiscardStaged = () => {
     setStagedAsset(null);
     setStagedTenantId(null);
+    setSelectedTenantForUpload(null);
     setPreviewModalVisible(false);
   };
 
@@ -164,8 +284,9 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
     setIsUploading(true);
     const asset = stagedAsset;
     const tenantId = stagedTenantId;
+    const docType = stagedDocType || 'other';
     try {
-      let fileName = asset.name || asset.fileName || 'lease_agreement.pdf';
+      let fileName = asset.name || asset.fileName || `${docType}_${Date.now()}.pdf`;
       let contentType = asset.mimeType || 'application/octet-stream';
       if (contentType === 'application/octet-stream') {
         const lower = fileName.toLowerCase();
@@ -183,27 +304,29 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
       }
 
       // 1. Read file as base64 to ensure resilient direct-upload fallback
-      let base64Content: string | null = null;
-      try {
-        base64Content = await FileSystem.readAsStringAsync(asset.uri, {
-          encoding: 'base64',
-        });
-      } catch {
+      let base64Content: string | null = asset.base64 || null;
+      if (!base64Content && asset.uri) {
         try {
-          const resp = await fetch(asset.uri);
-          const blob = await resp.blob();
-          base64Content = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const res = reader.result as string;
-              const b64 = res.includes(',') ? res.split(',')[1] : res;
-              resolve(b64);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
+          base64Content = await FileSystem.readAsStringAsync(asset.uri, {
+            encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
           });
         } catch {
-          // If local file reading fails, continue to attempt presigned upload
+          try {
+            const resp = await fetch(asset.uri);
+            const blob = await resp.blob();
+            base64Content = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const res = reader.result as string;
+                const b64 = res.includes(',') ? res.split(',')[1] : res;
+                resolve(b64);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+          } catch {
+            // If local file reading fails, continue to attempt presigned upload
+          }
         }
       }
 
@@ -211,7 +334,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
       let presignRes: any = null;
       try {
         presignRes = await apiClient.post('/documents/presign-upload', {
-          document_type: 'lease_agreement',
+          document_type: docType,
           file_name: fileName,
           content_type: contentType,
           tenant_id: tenantId,
@@ -278,7 +401,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
       // Otherwise, fall back cleanly to direct base64 upload!
       if (uploadSuccess && fileKey) {
         await apiClient.post('/documents', {
-          document_type: 'lease_agreement',
+          document_type: docType,
           file_key: fileKey,
           file_name: fileName,
           content_type: contentType,
@@ -286,7 +409,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
         });
       } else if (base64Content) {
         await apiClient.post('/documents', {
-          document_type: 'lease_agreement',
+          document_type: docType,
           file_name: fileName,
           content_type: contentType,
           tenant_id: tenantId,
@@ -303,6 +426,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
       setPreviewModalVisible(false);
       setStagedAsset(null);
       setStagedTenantId(null);
+      setSelectedTenantForUpload(null);
       Alert.alert('Success', 'Legal document uploaded to vault successfully.');
     } catch (err: any) {
       Alert.alert('Upload Failed', parseApiError(err).message || err.message || 'Unable to complete upload');
@@ -349,9 +473,16 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
     setTenantPickerVisible(true);
   };
 
-  const onPickTenant = (tenantId: number) => {
+  const onPickTenant = (tenant: { id: number; name: string }) => {
+    setSelectedTenantForUpload(tenant);
     setTenantPickerVisible(false);
-    handlePickDocument(tenantId);
+    setDocTypePickerVisible(true);
+  };
+
+  const onSelectDocType = (docType: string) => {
+    setStagedDocType(docType);
+    setDocTypePickerVisible(false);
+    setSourcePickerVisible(true);
   };
 
   const handleCardPress = (item: DocumentItem) => {
@@ -388,39 +519,53 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
   if (isLoading) return <LoadingSkeleton variant="list" />;
   if (isError) return <ErrorState message={parseApiError(error).message} onRetry={refetch} />;
 
-  const renderDocumentItem = ({ item }: { item: DocumentItem }) => (
-    <TouchableOpacity activeOpacity={0.7} onPress={() => handleCardPress(item)}>
-      <Card style={[styles.card, { borderColor: colors.border }]}>
-        <View style={styles.cardRow}>
-          <View style={[styles.iconCircle, { backgroundColor: colors.primary + '15' }]}>
-            <Ionicons name="document-text" size={24} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1, marginRight: space.sm }}>
-            <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.bodyStrong.fontSize }} numberOfLines={1}>
-              {item.file_name}
-            </Text>
-            <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 2 }}>
-              Type: {item.document_type.replace('_', ' ').toUpperCase()} · {new Date(item.created_at).toLocaleDateString()}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-              <Badge status={item.status} />
-              {item.status === 'rejected' && item.rejection_reason ? (
-                <Text style={{ color: '#d32f2f', fontSize: 11, marginLeft: 8, fontWeight: 'bold' }} numberOfLines={1}>
-                  Reason: {item.rejection_reason}
-                </Text>
-              ) : null}
+  const renderDocumentItem = ({ item }: { item: DocumentItem }) => {
+    const isWordDoc = item.file_name.toLowerCase().endsWith('.docx') || item.file_name.toLowerCase().endsWith('.doc');
+    return (
+      <TouchableOpacity activeOpacity={0.7} onPress={() => handleCardPress(item)}>
+        <Card style={[styles.card, { borderColor: colors.border }]}>
+          <View style={styles.cardRow}>
+            <View style={[styles.iconCircle, { backgroundColor: isWordDoc ? '#2563EB18' : colors.primary + '15' }]}>
+              <Ionicons
+                name={isWordDoc ? "document-text" : "document-text-outline"}
+                size={24}
+                color={isWordDoc ? "#2563EB" : colors.primary}
+              />
             </View>
+            <View style={{ flex: 1, marginRight: space.sm }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.bodyStrong.fontSize, flex: 1 }} numberOfLines={1}>
+                  {item.file_name}
+                </Text>
+                {isWordDoc ? (
+                  <View style={[styles.wordBadge, { backgroundColor: '#2563EB15', borderColor: '#2563EB40' }]}>
+                    <Text style={{ color: '#2563EB', fontSize: 10, fontWeight: '700' }}>DOCX</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 2 }}>
+                Type: {item.document_type.replace('_', ' ').toUpperCase()} · {new Date(item.created_at).toLocaleDateString()}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                <Badge status={item.status} />
+                {item.status === 'rejected' && item.rejection_reason ? (
+                  <Text style={{ color: '#d32f2f', fontSize: 11, marginLeft: 8, fontWeight: 'bold' }} numberOfLines={1}>
+                    Reason: {item.rejection_reason}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+            <TouchableOpacity
+              onPress={() => handleDownload(item.id)}
+              style={[styles.downloadBtn, { borderColor: colors.border }]}
+            >
+              <Ionicons name="eye-outline" size={18} color={colors.text} />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            onPress={() => handleDownload(item.id)}
-            style={[styles.downloadBtn, { borderColor: colors.border }]}
-          >
-            <Ionicons name="eye-outline" size={18} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-      </Card>
-    </TouchableOpacity>
-  );
+        </Card>
+      </TouchableOpacity>
+    );
+  };
 
   const handleBack = () => navigation.goBack();
 
@@ -471,7 +616,7 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
               style={{ maxHeight: 320 }}
               renderItem={({ item: t }) => (
                 <TouchableOpacity
-                  onPress={() => onPickTenant(t.id)}
+                  onPress={() => onPickTenant(t)}
                   style={{
                     paddingVertical: space.md,
                     borderBottomWidth: 1,
@@ -489,6 +634,139 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
         </View>
       </Modal>
 
+      {/* Dynamic Document Type Picker Modal */}
+      <Modal
+        visible={docTypePickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDocTypePickerVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Card style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
+                  Document Category
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 2 }}>
+                  For {selectedTenantForUpload?.name}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setDocTypePickerVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={DOC_TYPE_OPTIONS}
+              keyExtractor={(opt) => opt.value}
+              style={{ maxHeight: 340 }}
+              renderItem={({ item: opt }) => (
+                <TouchableOpacity
+                  onPress={() => onSelectDocType(opt.value)}
+                  style={styles.docTypeOptionRow}
+                >
+                  <View style={[styles.iconCircleSmall, { backgroundColor: colors.primary + '15', marginRight: 12 }]}>
+                    <Ionicons name={opt.icon} size={20} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontSize: font.body.fontSize, fontWeight: '600' }}>
+                      {opt.label}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 1 }}>
+                      {opt.description}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            />
+          </Card>
+        </View>
+      </Modal>
+
+      {/* Multi-Source Picker Modal (Camera, Gallery, Files) */}
+      <Modal
+        visible={sourcePickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSourcePickerVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Card style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
+                  Select Upload Source
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 2 }}>
+                  {DOC_TYPE_OPTIONS.find((o) => o.value === stagedDocType)?.label} · {selectedTenantForUpload?.name}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setSourcePickerVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleCameraCapture}
+              style={[styles.sourceOptionRow, { borderColor: colors.border, backgroundColor: colors.surface }]}
+            >
+              <View style={[styles.iconCircleSmall, { backgroundColor: '#10B98118' }]}>
+                <Ionicons name="camera-outline" size={22} color="#10B981" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.body.fontSize }}>
+                  Click Photo (Camera)
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 1 }}>
+                  Snap document directly with phone camera
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleGalleryPick}
+              style={[styles.sourceOptionRow, { borderColor: colors.border, backgroundColor: colors.surface }]}
+            >
+              <View style={[styles.iconCircleSmall, { backgroundColor: '#3B82F618' }]}>
+                <Ionicons name="images-outline" size={22} color="#3B82F6" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.body.fontSize }}>
+                  Photo Gallery
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 1 }}>
+                  Pick existing photo from your gallery
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleFilePick}
+              style={[styles.sourceOptionRow, { borderColor: colors.border, backgroundColor: colors.surface, marginBottom: space.sm }]}
+            >
+              <View style={[styles.iconCircleSmall, { backgroundColor: colors.primary + '18' }]}>
+                <Ionicons name="document-attach-outline" size={22} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.body.fontSize }}>
+                  Files & Documents (PDF / Word)
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: 1 }}>
+                  Browse device files for .pdf or .docx contracts
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          </Card>
+        </View>
+      </Modal>
+
       <FlatList
         data={documents}
         keyExtractor={(item) => String(item.id)}
@@ -498,6 +776,8 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
           <EmptyState
             title="Empty Legal Vault"
             body="Documents like signed rental contracts and payment receipts will show up here."
+            ctaLabel={isAuthorizedUploader ? 'Upload Document' : undefined}
+            onPress={isAuthorizedUploader ? startUpload : undefined}
           />
         }
         refreshing={isLoading}
@@ -529,7 +809,11 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
             </Text>
 
             <Button
-              label="View Document File"
+              label={
+                selectedDoc?.file_name.toLowerCase().endsWith('.docx')
+                  ? 'Download Word Document (.docx)'
+                  : 'View / Download Document File'
+              }
               onPress={() => selectedDoc && handleDownload(selectedDoc.id)}
               variant="secondary"
               style={{ marginBottom: space.sm }}
@@ -618,9 +902,14 @@ export const LegalVault: React.FC<{ navigation: any }> = ({ navigation }) => {
         <View style={styles.modalOverlay}>
           <Card style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.modalHeader}>
-              <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
-                Preview Upload
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
+                  Preview Upload
+                </Text>
+                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: font.caption.fontSize, marginTop: 2 }}>
+                  {DOC_TYPE_OPTIONS.find((o) => o.value === stagedDocType)?.label} · {selectedTenantForUpload?.name}
+                </Text>
+              </View>
               <TouchableOpacity onPress={handleDiscardStaged}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -753,5 +1042,34 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 8,
     marginBottom: 12,
+  },
+  iconCircleSmall: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  wordBadge: {
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 8,
+  },
+  docTypeOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB25',
+  },
+  sourceOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 10,
   },
 });

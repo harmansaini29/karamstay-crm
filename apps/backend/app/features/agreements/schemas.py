@@ -91,3 +91,10 @@ class AgreementApproveResponse(BaseModel):
     s3_folder_path: str
     archived_files: list[str]
     message: str
+
+
+class AgreementReplaceDocxRequest(BaseModel):
+    file_name: str | None = None
+    file_base64: str | None = None
+    file_key: str | None = None
+

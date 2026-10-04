@@ -131,3 +131,5 @@ docker-compose.override.yml
 .cache/
 tmp/
 temp/
+apps/backend/data/
+data/

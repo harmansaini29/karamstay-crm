@@ -9,11 +9,14 @@ from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import HTTPException, status
 from fpdf import FPDF
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.file_utils import safe_b64decode, sanitize_filename
+from app.core.security import utc_now
 from app.core.storage import get_storage
+from app.features.agreements.models import Agreement
 from app.features.auth.models import User
 from app.features.vault.schemas import (
     VaultCompileDocxRequest,
@@ -130,6 +133,38 @@ class VaultService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Storage upload error: {exc}",
             ) from exc
+
+        # If this is a Word agreement (.docx or .doc) uploaded into a tenant directory,
+        # auto-sync it with the active Agreement record for this tenant so both portals remain in sync.
+        if safe_name.lower().endswith((".docx", ".doc")):
+            parts = folder.split("/")
+            tenant_id = None
+            if len(parts) >= 2 and parts[0] == "tenants":
+                match = re.search(r"^(.*)_(\d+)$", parts[1])
+                if match:
+                    tenant_id = int(match.group(2))
+            if tenant_id:
+                stmt = (
+                    select(Agreement)
+                    .where(Agreement.tenant_id == tenant_id, Agreement.deleted_at.is_(None))
+                    .order_by(Agreement.id.desc())
+                )
+                agreement = self.db.scalar(stmt)
+                if agreement:
+                    agreement.docx_file_name = safe_name
+                    agreement.docx_generated_at = utc_now()
+                    agreement.tracker_stage = max(agreement.tracker_stage, 2)
+                    agreement.updated_by_id = current_user.id
+                    docx_canonical_key = f"agreements/ag_{agreement.id}_{agreement.template_id}.docx"
+                    try:
+                        self.storage.upload_bytes(
+                            key=docx_canonical_key,
+                            data=raw_bytes,
+                            content_type=payload.content_type,
+                        )
+                    except Exception:
+                        pass
+                    self.db.commit()
 
         return VaultOperationResponse(
             success=True,

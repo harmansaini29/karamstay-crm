@@ -22,10 +22,16 @@ class AnalyticsService:
         property_ids = self.report_service.resolve_property_scope(current_user, property_id)
 
         occupancy = self.report_service.occupancy(current_user, property_id)
-        billing_period = utc_now().strftime("%Y-%m")
-        revenue = self.report_service.revenue(current_user, billing_period, property_id)
-        pending_dues = self.report_service.pending_dues(current_user, property_id)
-        pending_total = sum((item.amount_due for item in pending_dues), Decimal("0.00"))
+        is_staff = current_user.role.name == "staff"
+        if is_staff:
+            revenue_this_month = Decimal("0.00")
+            pending_total = Decimal("0.00")
+        else:
+            billing_period = utc_now().strftime("%Y-%m")
+            revenue = self.report_service.revenue(current_user, billing_period, property_id)
+            revenue_this_month = revenue.total_collected
+            pending_dues = self.report_service.pending_dues(current_user, property_id)
+            pending_total = sum((item.amount_due for item in pending_dues), Decimal("0.00"))
 
         open_tickets = self.repository.count_open_tickets(property_ids)
 
@@ -37,7 +43,7 @@ class AnalyticsService:
         return AnalyticsDashboard(
             property_id=property_id,
             occupancy_rate=occupancy.occupancy_rate,
-            revenue_this_month=revenue.total_collected,
+            revenue_this_month=revenue_this_month,
             pending_dues_total=pending_total,
             open_maintenance_tickets=open_tickets,
             upcoming_move_ins=move_ins,

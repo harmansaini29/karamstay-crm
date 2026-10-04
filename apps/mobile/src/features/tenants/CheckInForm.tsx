@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
+import { useAuth } from '../auth/AuthContext';
 
 interface Property {
   id: number;
@@ -39,6 +40,8 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
   const { colors, font, space } = useTheme();
   const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const queryClient = useQueryClient();
+  const { role } = useAuth();
+  const isStaff = role === 'staff';
 
   const [selectedTenantId, setSelectedTenantId] = useState(tenantId ? String(tenantId) : '');
   const [selectedPropertyId, setSelectedPropertyId] = useState('');
@@ -46,6 +49,7 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [rent, setRent] = useState('');
   const [deposit, setDeposit] = useState('');
+  const [paperworkFee, setPaperworkFee] = useState('0');
   const [billingDay, setBillingDay] = useState('1');
   const [installmentCount, setInstallmentCount] = useState('1');
   const [bedIds, setBedIds] = useState<number[]>(passedBedIds || []);
@@ -204,11 +208,14 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
     if (!selectedUnitId) newErrors.unit = 'Unit is required';
     if (!startDate) newErrors.startDate = 'Start date is required';
 
-    const rentNum = parseFloat(rent);
-    if (isNaN(rentNum) || rentNum < 0) newErrors.rent = 'Monthly rent must be a positive number';
+    const rentNum = isStaff ? (selectedUnitData?.rent ?? 0) : parseFloat(rent);
+    if (!isStaff && (isNaN(rentNum) || rentNum < 0)) newErrors.rent = 'Monthly rent must be a positive number';
 
-    const depositNum = parseFloat(deposit);
-    if (isNaN(depositNum) || depositNum < 0) newErrors.deposit = 'Deposit must be a positive number';
+    const depositNum = isStaff ? (selectedUnitData?.deposit ?? 0) : parseFloat(deposit);
+    if (!isStaff && (isNaN(depositNum) || depositNum < 0)) newErrors.deposit = 'Deposit must be a positive number';
+
+    const paperworkNum = parseFloat(paperworkFee) || 0;
+    if (isNaN(paperworkNum) || paperworkNum < 0) newErrors.paperworkFee = 'Paperwork fee must be 0 or a positive number';
 
     const billDayNum = parseInt(billingDay);
     if (isNaN(billDayNum) || billDayNum < 1 || billDayNum > 28)
@@ -234,8 +241,9 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
       start_date: startDate,
       monthly_rent: rentNum,
       security_deposit: depositNum,
+      paperwork_fee: paperworkNum,
       billing_day: billDayNum,
-      installment_count: parseInt(installmentCount),
+      installment_count: isStaff ? 1 : parseInt(installmentCount),
     });
   };
 
@@ -410,26 +418,94 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
           error={errors.startDate}
         />
 
-        <View style={styles.row}>
-          <Input
-            label="Contract Monthly Rent"
-            value={rent}
-            onChangeText={setRent}
-            placeholder="INR"
-            keyboardType="decimal-pad"
-            style={{ width: '48%' }}
-            error={errors.rent}
-          />
-          <Input
-            label="Contract Security Deposit"
-            value={deposit}
-            onChangeText={setDeposit}
-            placeholder="INR"
-            keyboardType="decimal-pad"
-            style={{ width: '48%' }}
-            error={errors.deposit}
-          />
-        </View>
+        {isStaff ? (
+          <View
+            style={{
+              padding: 12,
+              borderRadius: 8,
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
+              marginBottom: space.md,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+              <Ionicons name="shield-checkmark" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+                Rent & Deposit Preconfigured
+              </Text>
+            </View>
+            <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 16 }}>
+              Contract rent and security deposit amounts are managed securely by property administration. You may enter any onboarding paperwork fee collected.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.row}>
+            <Input
+              label="Contract Monthly Rent"
+              value={rent}
+              onChangeText={setRent}
+              placeholder="INR"
+              keyboardType="decimal-pad"
+              style={{ width: '48%' }}
+              error={errors.rent}
+            />
+            <Input
+              label="Contract Security Deposit"
+              value={deposit}
+              onChangeText={setDeposit}
+              placeholder="INR"
+              keyboardType="decimal-pad"
+              style={{ width: '48%' }}
+              error={errors.deposit}
+            />
+          </View>
+        )}
+
+        <Input
+          label="Paperwork / Onboarding Fee (One-Time)"
+          value={paperworkFee}
+          onChangeText={setPaperworkFee}
+          placeholder="0"
+          keyboardType="decimal-pad"
+          error={errors.paperworkFee}
+        />
+
+        {!isStaff && (
+          <View
+            style={{
+              padding: 14,
+              borderRadius: 8,
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.border,
+              marginBottom: space.md,
+            }}
+          >
+            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 6 }}>
+              Initial Booking Dues Breakdown
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+              <Text style={{ color: colors.text, fontSize: 13 }}>First Month Rent:</Text>
+              <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>₹{(parseFloat(rent) || 0).toLocaleString('en-IN')}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+              <Text style={{ color: colors.text, fontSize: 13 }}>Security Deposit:</Text>
+              <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>₹{(parseFloat(deposit) || 0).toLocaleString('en-IN')}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+              <Text style={{ color: colors.text, fontSize: 13 }}>Paperwork / Onboarding Fee:</Text>
+              <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>₹{(parseFloat(paperworkFee) || 0).toLocaleString('en-IN')}</Text>
+            </View>
+            <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 6 }} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>Total Initial Booking Due:</Text>
+              <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 14 }}>
+                ₹{((parseFloat(rent) || 0) + (parseFloat(deposit) || 0) + (parseFloat(paperworkFee) || 0)).toLocaleString('en-IN')}
+              </Text>
+            </View>
+          </View>
+        )}
 
         <Input
           label="Monthly Billing Day"
@@ -441,20 +517,22 @@ export const CheckInForm: React.FC<{ route: any; navigation: any }> = ({ route, 
           error={errors.billingDay}
         />
 
-        <Input
-          label="Installment Count (Payment Split)"
-          value={installmentCount}
-          onChangeText={setInstallmentCount}
-          type="select"
-          options={[
-            { label: 'Single Payment (No Split)', value: '1' },
-            { label: '2 Monthly Installments', value: '2' },
-            { label: '3 Monthly Installments', value: '3' },
-            { label: '4 Monthly Installments', value: '4' },
-            { label: '6 Monthly Installments', value: '6' },
-          ]}
-          placeholder="Select installment count"
-        />
+        {!isStaff && (
+          <Input
+            label="Installment Count (Payment Split)"
+            value={installmentCount}
+            onChangeText={setInstallmentCount}
+            type="select"
+            options={[
+              { label: 'Single Payment (No Split)', value: '1' },
+              { label: '2 Monthly Installments', value: '2' },
+              { label: '3 Monthly Installments', value: '3' },
+              { label: '4 Monthly Installments', value: '4' },
+              { label: '6 Monthly Installments', value: '6' },
+            ]}
+            placeholder="Select installment count"
+          />
+        )}
 
         {/* Agreement Template Selector */}
         <View style={{ marginTop: space.md, marginBottom: space.sm }}>
