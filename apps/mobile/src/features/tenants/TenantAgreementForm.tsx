@@ -1,17 +1,23 @@
 /**
  * TenantAgreementForm.tsx
  *
- * Tenant-facing screen to fill in their legal agreement details.
- * Dynamically renders fields based on the assigned template (A / B / C).
- * On submit: PATCH /agreements/{id} with form_data, then POST compile-docx.
+ * Tenant-facing screen to fill in their Paying Guest Details Form and finalize agreement.
+ * Strictly implements the Paying Guest Agreement form format:
+ *   • Personal Details: Salutation (Ms./Mr.), First Name, Last Name, Age,
+ *     Permanent Address (as per Aadhar), State, Permanent Pincode,
+ *     Aadhar Card Number, Office Address, Office Pincode, Email ID.
+ *   • Reference Contacts: Ref 1 Name (e.g. Father/Mother), Ref 1 Phone,
+ *     Ref 2 Name, Ref 2 Phone.
+ *   • Agreement Terms: Rented Property Address, Monthly Rent (INR),
+ *     Security Deposit (INR), Agreement Start Date.
+ *   • Uploads & Signature: Aadhar card upload, Passport-size photo upload,
+ *     interactive signature drawing pad with Clear & Submit.
  *
- * Security:
- *   • Identity Number (Aadhaar/National ID) is masked in the UI on blur —
- *     the raw value is NEVER echoed in console logs, toasts, or Alert messages.
- *   • Sensitive fields are not stored in component state beyond form lifecycle.
+ * On submit: POST /agreements/{id}/submit-kyc, which compiles the .docx and .pdf
+ * Word documents and notifies the owner and staff on the spot.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,9 +28,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import { WebView } from 'react-native-webview';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, parseApiError } from '../../api/client';
@@ -39,84 +47,163 @@ import { ResponsiveContainer } from '../../components/ResponsiveContainer';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { AgreementTrackerCard } from '../../components/AgreementTrackerCard';
 
-// ─── Template definitions ─────────────────────────────────────────────────────
+interface FormDataState {
+  salutation: 'Ms' | 'Mr';
+  first_name: string;
+  last_name: string;
+  age: string;
+  address: string;
+  state: string;
+  permanent_pincode: string;
+  aadhar_no: string;
+  office_address: string;
+  office_pincode: string;
+  email_id: string;
+  ref1_name: string;
+  ref1_number: string;
+  ref2_name: string;
+  ref2_number: string;
+  rented_address: string;
+  rent_price: string;
+  security_deposit: string;
+  start_date: string;
+}
 
-type FieldDef = {
-  key: string;
-  label: string;
-  placeholder: string;
-  sensitive?: boolean;        // triggers masking on blur
-  multiline?: boolean;
-  keyboardType?: 'default' | 'phone-pad' | 'numeric' | 'email-address';
-};
+const SIGNATURE_HTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <style>
+    * { box-sizing: border-box; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background-color:#F9FAFB; }
+    #canvas-wrap { width:100%; height:100%; position:relative; }
+    canvas { width:100%; height:100%; display:block; touch-action:none; }
+  </style>
+</head>
+<body>
+  <div id="canvas-wrap">
+    <canvas id="c"></canvas>
+  </div>
+  <script>
+    var canvas = document.getElementById('c');
+    var ctx = canvas.getContext('2d');
+    var drawing = false;
+    var hasStroke = false;
 
-const TEMPLATE_FIELDS: Record<'A' | 'B' | 'C', FieldDef[]> = {
-  A: [
-    { key: 'full_name', label: 'Full Legal Name', placeholder: 'As per government ID' },
-    { key: 'age', label: 'Age', placeholder: 'e.g. 28', keyboardType: 'numeric' },
-    {
-      key: 'identity_number',
-      label: 'National ID Number',
-      placeholder: 'Aadhaar / Passport / Voter ID',
-      sensitive: true,
-    },
-    { key: 'phone', label: 'Phone Number', placeholder: '+91XXXXXXXXXX', keyboardType: 'phone-pad' },
-    { key: 'emergency_contact', label: 'Emergency Contact', placeholder: 'Name / Phone Number' },
-    { key: 'permanent_address', label: 'Permanent Address', placeholder: 'Full address with pin code', multiline: true },
-    { key: 'office_address', label: 'Office / Work Address', placeholder: 'Workplace full address', multiline: true },
-  ],
-  B: [
-    { key: 'full_name', label: 'Full Legal Name', placeholder: 'As per government ID' },
-    { key: 'age', label: 'Age', placeholder: 'e.g. 28', keyboardType: 'numeric' },
-    {
-      key: 'identity_number',
-      label: 'National ID Number',
-      placeholder: 'Aadhaar / Passport / Voter ID',
-      sensitive: true,
-    },
-    { key: 'phone', label: 'Phone Number', placeholder: '+91XXXXXXXXXX', keyboardType: 'phone-pad' },
-    { key: 'emergency_contact', label: 'Emergency Contact', placeholder: 'Name / Phone Number' },
-    { key: 'guardian_name', label: 'Guardian Name', placeholder: 'Parent / Spouse name (if applicable)' },
-    { key: 'guardian_phone', label: 'Guardian Phone', placeholder: '+91XXXXXXXXXX', keyboardType: 'phone-pad' },
-    { key: 'permanent_address', label: 'Permanent Address', placeholder: 'Full address with pin code', multiline: true },
-    { key: 'office_address', label: 'Office / Work Address', placeholder: 'Workplace full address', multiline: true },
-    { key: 'workplace_contact', label: 'Workplace HR Contact', placeholder: 'Name / Email / Phone' },
-    { key: 'vehicle_registration', label: 'Vehicle Registration (optional)', placeholder: 'e.g. DL 9C AB 1234' },
-  ],
-  C: [
-    { key: 'full_name', label: 'Full Legal Name', placeholder: 'As per government ID' },
-    { key: 'age', label: 'Age', placeholder: 'e.g. 28', keyboardType: 'numeric' },
-    {
-      key: 'identity_number',
-      label: 'National ID Number',
-      placeholder: 'Aadhaar / Passport / Voter ID',
-      sensitive: true,
-    },
-    { key: 'phone', label: 'Phone Number', placeholder: '+91XXXXXXXXXX', keyboardType: 'phone-pad' },
-    { key: 'emergency_contact', label: 'Emergency Contact', placeholder: 'Name / Phone Number' },
-    { key: 'permanent_address', label: 'Permanent Address', placeholder: 'Full address with pin code', multiline: true },
-    { key: 'short_stay_purpose', label: 'Purpose of Short Stay', placeholder: 'e.g. Work assignment / Medical / Tourism' },
-    { key: 'expected_checkout_date', label: 'Expected Checkout Date', placeholder: 'YYYY-MM-DD' },
-  ],
-};
+    function resizeCanvas() {
+      var ratio = window.devicePixelRatio || 1;
+      var w = window.innerWidth;
+      var h = window.innerHeight;
+      canvas.width = w * ratio;
+      canvas.height = h * ratio;
+      ctx.scale(ratio, ratio);
+      ctx.strokeStyle = '#1E3A8A';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
 
-// ─── Component ─────────────────────────────────────────────────────────────
+    function getPos(e) {
+      var rect = canvas.getBoundingClientRect();
+      var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return { x: clientX - rect.left, y: clientY - rect.top };
+    }
+
+    function startDraw(e) {
+      drawing = true;
+      hasStroke = true;
+      var pos = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+      if (e.cancelable) e.preventDefault();
+    }
+
+    function moveDraw(e) {
+      if (!drawing) return;
+      var pos = getPos(e);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      if (e.cancelable) e.preventDefault();
+    }
+
+    function stopDraw(e) {
+      if (!drawing) return;
+      drawing = false;
+      if (window.ReactNativeWebView && hasStroke) {
+        var dataUrl = canvas.toDataURL('image/png');
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'signature', data: dataUrl }));
+      }
+    }
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', moveDraw);
+    window.addEventListener('mouseup', stopDraw);
+
+    canvas.addEventListener('touchstart', startDraw, { passive: false });
+    canvas.addEventListener('touchmove', moveDraw, { passive: false });
+    window.addEventListener('touchend', stopDraw);
+
+    window.clearCanvas = function() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      hasStroke = false;
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'clear' }));
+      }
+    };
+  </script>
+</body>
+</html>
+`;
 
 export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
   route,
   navigation,
 }) => {
   const { agreementId } = route.params as { agreementId: number };
-  const { colors, font, space } = useTheme();
+  const { colors, font, space, radius } = useTheme();
   const { contentBottomPadding, horizontalGutter } = useResponsiveLayout();
   const qc = useQueryClient();
+  const webViewRef = useRef<WebView>(null);
 
-  const [formValues, setFormValues] = useState<Record<string, string>>({});
-  const [maskedFields, setMaskedFields] = useState<Record<string, boolean>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const getTodayFormatted = () => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const [formData, setFormData] = useState<FormDataState>({
+    salutation: 'Ms',
+    first_name: '',
+    last_name: '',
+    age: '',
+    address: '',
+    state: '',
+    permanent_pincode: '',
+    aadhar_no: '',
+    office_address: '',
+    office_pincode: '',
+    email_id: '',
+    ref1_name: '',
+    ref1_number: '',
+    ref2_name: '',
+    ref2_number: '',
+    rented_address: '',
+    rent_price: '',
+    security_deposit: '',
+    start_date: getTodayFormatted(),
+  });
+
   const [tenantPhoto, setTenantPhoto] = useState<{ uri: string; base64: string } | null>(null);
   const [aadharCard, setAadharCard] = useState<{ uri: string; base64: string } | null>(null);
   const [signature, setSignature] = useState<{ uri: string; base64: string } | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [isMaskedAadhar, setIsMaskedAadhar] = useState(false);
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -134,25 +221,70 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
     },
   });
 
+  // Fetch tenant's tenancy details to prefill rent, deposit, property address
+  const { data: tenancies = [] } = useQuery<any[]>({
+    queryKey: ['my-tenancies'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/tenancies');
+        return Array.isArray(res.data) ? res.data : [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
   useEffect(() => {
     if (agreement?.form_data && Object.keys(agreement.form_data).length > 0) {
-      setFormValues(agreement.form_data);
+      const saved = agreement.form_data;
+      setFormData((prev) => ({
+        ...prev,
+        salutation: saved.salutation === 'Mr' ? 'Mr' : 'Ms',
+        first_name: saved.first_name || prev.first_name,
+        last_name: saved.last_name || prev.last_name,
+        age: saved.age ? String(saved.age) : prev.age,
+        address: saved.address || saved.permanent_address || prev.address,
+        state: saved.state || prev.state,
+        permanent_pincode: saved.permanent_pincode || prev.permanent_pincode,
+        aadhar_no: saved.aadhar_no || saved.identity_number || prev.aadhar_no,
+        office_address: saved.office_address || prev.office_address,
+        office_pincode: saved.office_pincode || prev.office_pincode,
+        email_id: saved.email_id || prev.email_id,
+        ref1_name: saved.ref1_name || prev.ref1_name,
+        ref1_number: saved.ref1_number || prev.ref1_number,
+        ref2_name: saved.ref2_name || prev.ref2_name,
+        ref2_number: saved.ref2_number || prev.ref2_number,
+        rented_address: saved.rented_address || prev.rented_address,
+        rent_price: saved.rent_price ? String(saved.rent_price) : prev.rent_price,
+        security_deposit: saved.security_deposit ? String(saved.security_deposit) : prev.security_deposit,
+        start_date: saved.start_date || prev.start_date,
+      }));
+    } else if (tenancies.length > 0) {
+      const activeTenancy = tenancies[0];
+      setFormData((prev) => ({
+        ...prev,
+        rent_price: prev.rent_price || (activeTenancy.monthly_rent ? String(Math.round(activeTenancy.monthly_rent)) : ''),
+        security_deposit: prev.security_deposit || (activeTenancy.security_deposit ? String(Math.round(activeTenancy.security_deposit)) : ''),
+        start_date: prev.start_date || (activeTenancy.start_date ? activeTenancy.start_date.split('T')[0] : getTodayFormatted()),
+      }));
     }
+
     if (agreement?.tracker_stage >= 2 || agreement?.status === 'docx_generated' || agreement?.status === 'approved') {
       setSubmitted(true);
     }
-  }, [agreement]);
+  }, [agreement, tenancies]);
 
-  const templateId: 'A' | 'B' | 'C' = agreement?.template_id ?? 'A';
-  const fields = TEMPLATE_FIELDS[templateId] ?? TEMPLATE_FIELDS['A'];
+  const updateField = (field: keyof FormDataState, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
 
-  // ── Handlers for KYC Uploads ──────────────────────────────────────────────
+  // ── Document Pickers ───────────────────────────────────────────────────────
 
   const pickPhoto = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Permission Denied', 'Gallery access is required to upload photo.');
+        Alert.alert('Permission Denied', 'Gallery access is required to select photograph.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -175,7 +307,7 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
         setTenantPhoto({ uri: asset.uri, base64: b64 || '' });
       }
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Could not pick photo');
+      Alert.alert('Error', e?.message || 'Could not pick photograph');
     }
   };
 
@@ -183,7 +315,7 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Permission Denied', 'Gallery access is required to upload Aadhaar card.');
+        Alert.alert('Permission Denied', 'Gallery access is required to select Aadhaar document.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -209,11 +341,11 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
     }
   };
 
-  const pickSignature = async () => {
+  const pickSignatureFile = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Permission Denied', 'Gallery access is required to upload signature.');
+        Alert.alert('Permission Denied', 'Gallery access is required to select signature file.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -239,27 +371,58 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
     }
   };
 
+  const handleClearSignature = () => {
+    setSignature(null);
+    webViewRef.current?.injectJavaScript('window.clearCanvas(); true;');
+  };
+
   // ── Validation ─────────────────────────────────────────────────────────────
 
   const validate = (): string | null => {
-    for (const field of fields) {
-      if (!field.key.includes('optional') && !formValues[field.key]?.trim()) {
-        return `${field.label} is required.`;
-      }
+    if (!formData.first_name.trim()) return 'First Name is required.';
+    if (!formData.last_name.trim()) return 'Last Name is required.';
+    if (!formData.age.trim() || isNaN(Number(formData.age)) || Number(formData.age) < 18) {
+      return 'Please enter a valid adult age (18+).';
+    }
+    if (!formData.address.trim()) return 'Permanent Address (as per Aadhar) is required.';
+    if (!formData.state.trim()) return 'State is required.';
+    if (!formData.permanent_pincode.trim() || formData.permanent_pincode.replace(/\D/g, '').length !== 6) {
+      return 'Please enter a valid 6-digit Permanent Pincode.';
+    }
+    const cleanAadhar = formData.aadhar_no.replace(/\D/g, '');
+    if (!formData.aadhar_no.trim() || cleanAadhar.length !== 12) {
+      return 'Please enter a valid 12-digit Aadhar Card Number.';
+    }
+    if (!formData.ref1_name.trim()) return 'Reference 1 Name is required.';
+    if (!formData.ref1_number.trim() || formData.ref1_number.replace(/\D/g, '').length < 10) {
+      return 'Please enter a valid 10-digit Reference 1 Number.';
+    }
+    if (!formData.ref2_name.trim()) return 'Reference 2 Name is required.';
+    if (!formData.ref2_number.trim() || formData.ref2_number.replace(/\D/g, '').length < 10) {
+      return 'Please enter a valid 10-digit Reference 2 Number.';
+    }
+    if (!formData.rented_address.trim()) return 'Rented Property Address is required.';
+    if (!formData.rent_price.trim() || isNaN(Number(formData.rent_price))) {
+      return 'Please enter a valid Monthly Rent (INR).';
+    }
+    if (!formData.security_deposit.trim() || isNaN(Number(formData.security_deposit))) {
+      return 'Please enter a valid Security Deposit (INR).';
+    }
+    if (!formData.start_date.trim()) return 'Agreement Start Date is required.';
+
+    if (!aadharCard && !agreement?.aadhar_card_key) {
+      return 'Please upload your Aadhar card photocopy.';
     }
     if (!tenantPhoto && !agreement?.tenant_photo_key) {
-      return 'Please upload your passport-size photo or headshot.';
-    }
-    if (!aadharCard && !agreement?.aadhar_card_key) {
-      return 'Please upload your Aadhaar Card or National ID proof.';
+      return 'Please upload your Passport-size photo.';
     }
     if (!signature && !agreement?.signature_key) {
-      return 'Please upload your signature.';
+      return 'Please draw or upload your signature.';
     }
     return null;
   };
 
-  // ── Mutations ──────────────────────────────────────────────────────────────
+  // ── Submission ─────────────────────────────────────────────────────────────
 
   const handleGoBack = () => {
     if (navigation?.canGoBack && navigation.canGoBack()) {
@@ -271,18 +434,12 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      // Mask identity number before sending (store only last 4 digits visible)
-      const safeFormData: Record<string, string> = {};
-      for (const [k, v] of Object.entries(formValues)) {
-        if (k === 'identity_number') {
-          safeFormData[k] = v.replace(/\d(?=\d{4})/g, '*');
-        } else {
-          safeFormData[k] = v;
-        }
-      }
-      // Call submit-kyc endpoint: uploads KYC docs, compiles docx & pdf, updates stage, and notifies staff
       const res = await apiClient.post(`/agreements/${agreementId}/submit-kyc`, {
-        form_data: safeFormData,
+        form_data: {
+          ...formData,
+          full_name: `${formData.first_name} ${formData.last_name}`.trim(),
+          permanent_address: formData.address,
+        },
         tenant_photo_base64: tenantPhoto?.base64,
         aadhar_card_base64: aadharCard?.base64,
         signature_base64: signature?.base64,
@@ -295,8 +452,8 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
       qc.invalidateQueries({ queryKey: ['my-agreements'] });
       setSubmitted(true);
       Alert.alert(
-        'Submitted Successfully',
-        'Your agreement details, photograph, Aadhaar card, and signature have been submitted to your property owner for verification.',
+        'Thank You!',
+        'Your details have been submitted successfully and the agreement is being generated.',
         [{ text: 'OK', onPress: handleGoBack }]
       );
     },
@@ -304,9 +461,6 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
       Alert.alert('Submission Failed', parseApiError(err).message);
     },
   });
-
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   if (isLoading) return <LoadingSkeleton variant="detail" />;
   if (isError) return <ErrorState message={parseApiError(error).message} onRetry={refetch} />;
@@ -316,17 +470,16 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
       <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.bg }]}>
         <ResponsiveContainer>
           <ScrollView contentContainerStyle={{ padding: space.lg, alignItems: 'center' }}>
-            <View style={{ marginTop: 60, alignItems: 'center' }}>
-              <Ionicons name="checkmark-circle" size={64} color={semanticColor.success.solid} />
+            <View style={{ marginTop: 40, alignItems: 'center' }}>
+              <Ionicons name="checkmark-circle" size={68} color={semanticColor.success.solid} />
               <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h2.fontSize, marginTop: 16, textAlign: 'center' }}>
                 Agreement Submitted
               </Text>
               <Text style={{ color: colors.textMuted, fontSize: font.body.fontSize, marginTop: 8, textAlign: 'center', lineHeight: 22 }}>
-                Your agreement details have been submitted and the document is under review by your property owner.
-                {'\n\n'}You will be notified once it's approved and archived.
+                Your agreement Word document has been generated and submitted to your property owner and staff for verification.
               </Text>
             </View>
-            <View style={{ width: '100%', marginTop: 40 }}>
+            <View style={{ width: '100%', marginTop: 32 }}>
               <AgreementTrackerCard stage={agreement.tracker_stage} />
             </View>
             <Button label="Back to Home" onPress={handleGoBack} style={{ marginTop: 32, width: '100%' }} />
@@ -347,196 +500,415 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
               <Text style={{ color: colors.primary, marginLeft: space.xs, fontSize: font.body.fontSize }}>Back</Text>
             </TouchableOpacity>
             <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>Agreement Form</Text>
-            <View style={{ width: 50 }} />
+            <View style={{ width: 45 }} />
           </View>
 
           <ScrollView
-            contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding + 40 }}
+            contentContainerStyle={{ paddingHorizontal: horizontalGutter, paddingBottom: contentBottomPadding + 50 }}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Template banner */}
-            <Card style={{ borderWidth: 1, marginBottom: space.md, flexDirection: 'row', alignItems: 'center', padding: 12 }}>
-              <Ionicons name="document-text-outline" size={22} color={colors.primary} style={{ marginRight: 10 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.bodyStrong.fontSize }}>
-                  {agreement?.template_name ?? 'Agreement'}
-                </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-                  Please fill all fields carefully. Your submitted details will be compiled into a legal document.
-                </Text>
+            {/* Title Banner */}
+            <View style={{ marginBottom: space.lg, marginTop: space.xs }}>
+              <Text style={{ color: colors.text, fontSize: 24, fontWeight: '800', textAlign: 'center' }}>
+                Paying Guest Details Form
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 }}>
+                Please fill in your details below to finalize the agreement.
+              </Text>
+            </View>
+
+            {/* ── SECTION 1: PERSONAL DETAILS ── */}
+            <Card style={{ borderWidth: 1, borderColor: colors.border, padding: space.md, marginBottom: space.lg }}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="person-outline" size={18} color={colors.primary} style={{ marginRight: 8 }} />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Personal Details</Text>
+              </View>
+
+              {/* Salutation Selector */}
+              <View style={{ marginBottom: space.md }}>
+                <Text style={styles.fieldLabel}>Salutation *</Text>
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+                  {(['Ms', 'Mr'] as const).map((sal) => {
+                    const isSelected = formData.salutation === sal;
+                    return (
+                      <TouchableOpacity
+                        key={sal}
+                        onPress={() => updateField('salutation', sal)}
+                        activeOpacity={0.8}
+                        style={{
+                          flex: 1,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          paddingVertical: 10,
+                          borderRadius: 8,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? colors.primary : colors.border,
+                          backgroundColor: isSelected ? colors.primary + '12' : colors.surface,
+                          gap: 6,
+                        }}
+                      >
+                        <Ionicons
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          size={16}
+                          color={isSelected ? colors.primary : colors.textMuted}
+                        />
+                        <Text style={{ color: isSelected ? colors.primary : colors.text, fontWeight: isSelected ? '700' : '500', fontSize: 14 }}>
+                          {sal}.
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* First & Last Name */}
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: space.md }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>First Name *</Text>
+                  <Input
+                    value={formData.first_name}
+                    onChangeText={(t) => updateField('first_name', t)}
+                    placeholder="First Name"
+                    style={{ marginTop: 4 }}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Last Name *</Text>
+                  <Input
+                    value={formData.last_name}
+                    onChangeText={(t) => updateField('last_name', t)}
+                    placeholder="Last Name"
+                    style={{ marginTop: 4 }}
+                  />
+                </View>
+              </View>
+
+              {/* Age */}
+              <View style={{ marginBottom: space.md }}>
+                <Text style={styles.fieldLabel}>Age *</Text>
+                <Input
+                  value={formData.age}
+                  onChangeText={(t) => updateField('age', t.replace(/\D/g, ''))}
+                  placeholder="e.g. 24"
+                  keyboardType="numeric"
+                  style={{ marginTop: 4 }}
+                />
+              </View>
+
+              {/* Permanent Address */}
+              <View style={{ marginBottom: space.md }}>
+                <Text style={styles.fieldLabel}>Permanent Address (as per Aadhar Card) *</Text>
+                <Input
+                  value={formData.address}
+                  onChangeText={(t) => updateField('address', t)}
+                  placeholder="Full permanent residential address"
+                  multiline
+                  style={{ marginTop: 4, minHeight: 70 }}
+                />
+              </View>
+
+              {/* State & Permanent Pincode */}
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: space.md }}>
+                <View style={{ flex: 1.2 }}>
+                  <Text style={styles.fieldLabel}>State (Permanent Address) *</Text>
+                  <Input
+                    value={formData.state}
+                    onChangeText={(t) => updateField('state', t)}
+                    placeholder="e.g., Maharashtra"
+                    style={{ marginTop: 4 }}
+                  />
+                </View>
+                <View style={{ flex: 0.8 }}>
+                  <Text style={styles.fieldLabel}>Pincode *</Text>
+                  <Input
+                    value={formData.permanent_pincode}
+                    onChangeText={(t) => updateField('permanent_pincode', t.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="6 digits"
+                    keyboardType="numeric"
+                    style={{ marginTop: 4 }}
+                  />
+                </View>
+              </View>
+
+              {/* Aadhar Card Number */}
+              <View style={{ marginBottom: space.md }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.fieldLabel}>Aadhar Card Number *</Text>
+                  <TouchableOpacity onPress={() => setIsMaskedAadhar(!isMaskedAadhar)}>
+                    <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '600' }}>
+                      {isMaskedAadhar ? 'Show' : 'Mask'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Input
+                  value={
+                    isMaskedAadhar
+                      ? formData.aadhar_no.replace(/\d(?=\d{4})/g, '•')
+                      : formData.aadhar_no
+                  }
+                  onChangeText={(t) => updateField('aadhar_no', t.replace(/\D/g, '').slice(0, 12))}
+                  placeholder="12-digit Aadhar number"
+                  keyboardType="numeric"
+                  style={{ marginTop: 4 }}
+                />
+              </View>
+
+              {/* Office Address & Office Pincode */}
+              <View style={{ marginBottom: space.md }}>
+                <Text style={styles.fieldLabel}>Office Address</Text>
+                <Input
+                  value={formData.office_address}
+                  onChangeText={(t) => updateField('office_address', t)}
+                  placeholder="Company name, building, street (optional)"
+                  multiline
+                  style={{ marginTop: 4 }}
+                />
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: space.md }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Pincode (Office Address)</Text>
+                  <Input
+                    value={formData.office_pincode}
+                    onChangeText={(t) => updateField('office_pincode', t.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="6-digit pincode"
+                    keyboardType="numeric"
+                    style={{ marginTop: 4 }}
+                  />
+                </View>
+                <View style={{ flex: 1.5 }}>
+                  <Text style={styles.fieldLabel}>Email ID</Text>
+                  <Input
+                    value={formData.email_id}
+                    onChangeText={(t) => updateField('email_id', t)}
+                    placeholder="name@email.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    style={{ marginTop: 4 }}
+                  />
+                </View>
               </View>
             </Card>
 
-            {/* Dynamic fields */}
-            {fields.map((field) => {
-              const isMasked = field.sensitive && maskedFields[field.key];
-              const displayValue = isMasked
-                ? (formValues[field.key] || '').replace(/\d(?=\d{4})/g, '*')
-                : formValues[field.key] || '';
+            {/* ── SECTION 2: REFERENCE CONTACTS ── */}
+            <Card style={{ borderWidth: 1, borderColor: colors.border, padding: space.md, marginBottom: space.lg }}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="call-outline" size={18} color={colors.primary} style={{ marginRight: 8 }} />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Reference Contacts</Text>
+              </View>
 
-              return (
-                <View key={field.key} style={{ marginBottom: space.md }}>
-                  <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 6, letterSpacing: 0.5 }}>
-                    {field.label}
-                    {field.sensitive && (
-                      <Text style={{ color: semanticColor.warning.fg }}> (Sensitive — encrypted)</Text>
-                    )}
-                  </Text>
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: space.md }}>
+                <View style={{ flex: 1.2 }}>
+                  <Text style={styles.fieldLabel}>Reference 1 Name (e.g., Father/Mother) *</Text>
                   <Input
-                    value={displayValue}
-                    onChangeText={(t) => {
-                      if (isMasked) return; // read-only while masked
-                      setFormValues((prev) => ({ ...prev, [field.key]: t }));
-                    }}
-                    onFocus={() => {
-                      if (field.sensitive) {
-                        setMaskedFields((prev) => ({ ...prev, [field.key]: false }));
-                      }
-                    }}
-                    onBlur={() => {
-                      if (field.sensitive && formValues[field.key]) {
-                        setMaskedFields((prev) => ({ ...prev, [field.key]: true }));
-                      }
-                    }}
-                    placeholder={field.placeholder}
-                    keyboardType={field.keyboardType ?? 'default'}
-                    multiline={field.multiline}
-                    secureTextEntry={false} // we do our own masking above
-                    style={field.sensitive ? { borderColor: colors.primary + '60', borderWidth: 1.5 } : undefined}
+                    value={formData.ref1_name}
+                    onChangeText={(t) => updateField('ref1_name', t)}
+                    placeholder="Guardian Name"
+                    style={{ marginTop: 4 }}
                   />
-                  {field.sensitive && (
-                    <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 4 }}>
-                      This field will be encrypted. Only masked digits are stored.
-                    </Text>
-                  )}
                 </View>
-              );
-            })}
-
-            {/* Identity & KYC Verification Uploads */}
-            <Card style={{ borderWidth: 1, borderColor: colors.border, padding: space.md, marginBottom: space.lg, marginTop: space.sm }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                <Ionicons name="shield-checkmark" size={20} color={colors.primary} style={{ marginRight: 8 }} />
-                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.bodyStrong.fontSize }}>
-                  KYC & Identity Verification
-                </Text>
-              </View>
-              <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 16 }}>
-                Government regulations require a headshot photo, Aadhaar card photocopy, and signature before rental agreement execution.
-              </Text>
-
-              {/* 1. Tenant Headshot / Photocopy */}
-              <View style={{ marginBottom: 16, padding: 12, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>
-                    1. Tenant Photo / Headshot <Text style={{ color: semanticColor.error.solid }}>*</Text>
-                  </Text>
-                  <TouchableOpacity onPress={pickPhoto} style={{ backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}>
-                    <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 11 }}>
-                      {tenantPhoto || agreement?.tenant_photo_url ? 'Change Photo' : 'Upload Photo'}
-                    </Text>
-                  </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Reference 1 Number *</Text>
+                  <Input
+                    value={formData.ref1_number}
+                    onChangeText={(t) => updateField('ref1_number', t.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="10 digits"
+                    keyboardType="phone-pad"
+                    style={{ marginTop: 4 }}
+                  />
                 </View>
-                {tenantPhoto?.uri ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                    <Image source={{ uri: tenantPhoto.uri }} style={{ width: 60, height: 60, borderRadius: 30, marginRight: 12, borderWidth: 1, borderColor: colors.border }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: semanticColor.success.solid, fontWeight: 'bold', fontSize: 12 }}>Photo Selected</Text>
-                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Ready for submission</Text>
-                    </View>
-                  </View>
-                ) : agreement?.tenant_photo_url ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                    <Image source={{ uri: agreement.tenant_photo_url }} style={{ width: 60, height: 60, borderRadius: 30, marginRight: 12, borderWidth: 1, borderColor: colors.border }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 12 }}>Photo on File</Text>
-                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Tap Change Photo to update</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <TouchableOpacity onPress={pickPhoto} style={{ height: 60, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.border, borderRadius: 8, justifyContent: 'center', alignItems: 'center', flexDirection: 'row' }}>
-                    <Ionicons name="camera-outline" size={20} color={colors.textMuted} style={{ marginRight: 8 }} />
-                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>Tap to choose photo or headshot</Text>
-                  </TouchableOpacity>
-                )}
               </View>
 
-              {/* 2. Aadhaar Card / ID Proof */}
-              <View style={{ marginBottom: 16, padding: 12, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>
-                    2. Aadhaar Card / National ID <Text style={{ color: semanticColor.error.solid }}>*</Text>
-                  </Text>
-                  <TouchableOpacity onPress={pickAadhar} style={{ backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}>
-                    <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 11 }}>
-                      {aadharCard || agreement?.aadhar_card_url ? 'Change ID' : 'Upload ID'}
-                    </Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1.2 }}>
+                  <Text style={styles.fieldLabel}>Reference 2 Name *</Text>
+                  <Input
+                    value={formData.ref2_name}
+                    onChangeText={(t) => updateField('ref2_name', t)}
+                    placeholder="Friend / Relative"
+                    style={{ marginTop: 4 }}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Reference 2 Number *</Text>
+                  <Input
+                    value={formData.ref2_number}
+                    onChangeText={(t) => updateField('ref2_number', t.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="10 digits"
+                    keyboardType="phone-pad"
+                    style={{ marginTop: 4 }}
+                  />
+                </View>
+              </View>
+            </Card>
+
+            {/* ── SECTION 3: AGREEMENT TERMS ── */}
+            <Card style={{ borderWidth: 1, borderColor: colors.border, padding: space.md, marginBottom: space.lg }}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="document-text-outline" size={18} color={colors.primary} style={{ marginRight: 8 }} />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Agreement Terms</Text>
+              </View>
+
+              <View style={{ marginBottom: space.md }}>
+                <Text style={styles.fieldLabel}>Rented Property Address *</Text>
+                <Input
+                  value={formData.rented_address}
+                  onChangeText={(t) => updateField('rented_address', t)}
+                  placeholder="Property premises address"
+                  multiline
+                  style={{ marginTop: 4 }}
+                />
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: space.md }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Monthly Rent (INR) *</Text>
+                  <Input
+                    value={formData.rent_price}
+                    onChangeText={(t) => updateField('rent_price', t.replace(/\D/g, ''))}
+                    placeholder="e.g. 12000"
+                    keyboardType="numeric"
+                    style={{ marginTop: 4 }}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Security Deposit (INR) *</Text>
+                  <Input
+                    value={formData.security_deposit}
+                    onChangeText={(t) => updateField('security_deposit', t.replace(/\D/g, ''))}
+                    placeholder="e.g. 24000"
+                    keyboardType="numeric"
+                    style={{ marginTop: 4 }}
+                  />
+                </View>
+              </View>
+
+              <View>
+                <Text style={styles.fieldLabel}>Agreement Start Date *</Text>
+                <Input
+                  value={formData.start_date}
+                  onChangeText={(t) => updateField('start_date', t)}
+                  placeholder="YYYY-MM-DD or DD-MM-YYYY"
+                  style={{ marginTop: 4 }}
+                />
+              </View>
+            </Card>
+
+            {/* ── SECTION 4: UPLOADS & SIGNATURE ── */}
+            <Card style={{ borderWidth: 1, borderColor: colors.border, padding: space.md, marginBottom: space.lg }}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} style={{ marginRight: 8 }} />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Uploads & Signature</Text>
+              </View>
+
+              {/* 1. Aadhar Card Upload */}
+              <View style={styles.uploadBlock}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.uploadLabel}>Aadhar card upload *</Text>
+                  <TouchableOpacity onPress={pickAadhar} style={styles.uploadBtn}>
+                    <Text style={styles.uploadBtnText}>{aadharCard ? 'Change' : 'Choose File'}</Text>
                   </TouchableOpacity>
                 </View>
                 {aadharCard?.uri ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                    <Image source={{ uri: aadharCard.uri }} style={{ width: 80, height: 50, borderRadius: 6, marginRight: 12, borderWidth: 1, borderColor: colors.border }} />
+                  <View style={styles.previewRow}>
+                    <Image source={{ uri: aadharCard.uri }} style={styles.docThumb} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: semanticColor.success.solid, fontWeight: 'bold', fontSize: 12 }}>Aadhaar Selected</Text>
-                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Ready for submission</Text>
-                    </View>
-                  </View>
-                ) : agreement?.aadhar_card_url ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                    <Image source={{ uri: agreement.aadhar_card_url }} style={{ width: 80, height: 50, borderRadius: 6, marginRight: 12, borderWidth: 1, borderColor: colors.border }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 12 }}>Aadhaar on File</Text>
-                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Tap Change ID to update</Text>
+                      <Text style={styles.docStatusReady}>Aadhaar Card Attached</Text>
+                      <Text style={styles.docSub}>Ready for legal verification</Text>
                     </View>
                   </View>
                 ) : (
-                  <TouchableOpacity onPress={pickAadhar} style={{ height: 60, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.border, borderRadius: 8, justifyContent: 'center', alignItems: 'center', flexDirection: 'row' }}>
-                    <Ionicons name="card-outline" size={20} color={colors.textMuted} style={{ marginRight: 8 }} />
-                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>Tap to upload Aadhaar card photocopy</Text>
+                  <TouchableOpacity onPress={pickAadhar} style={styles.uploadPlaceholder}>
+                    <Ionicons name="card-outline" size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>Upload Aadhaar card image</Text>
                   </TouchableOpacity>
                 )}
               </View>
 
-              {/* 3. Signature */}
-              <View style={{ padding: 12, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>
-                    3. Tenant Signature <Text style={{ color: semanticColor.error.solid }}>*</Text>
-                  </Text>
-                  <TouchableOpacity onPress={pickSignature} style={{ backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}>
-                    <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 11 }}>
-                      {signature || agreement?.signature_url ? 'Change Signature' : 'Upload Signature'}
-                    </Text>
+              {/* 2. Passport Size Photo Upload */}
+              <View style={styles.uploadBlock}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.uploadLabel}>Passportsize photo upload *</Text>
+                  <TouchableOpacity onPress={pickPhoto} style={styles.uploadBtn}>
+                    <Text style={styles.uploadBtnText}>{tenantPhoto ? 'Change' : 'Choose File'}</Text>
                   </TouchableOpacity>
                 </View>
-                {signature?.uri ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                    <Image source={{ uri: signature.uri }} style={{ width: 80, height: 40, borderRadius: 4, marginRight: 12, borderWidth: 1, borderColor: colors.border, resizeMode: 'contain', backgroundColor: '#fff' }} />
+                {tenantPhoto?.uri ? (
+                  <View style={styles.previewRow}>
+                    <Image source={{ uri: tenantPhoto.uri }} style={styles.photoThumb} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: semanticColor.success.solid, fontWeight: 'bold', fontSize: 12 }}>Signature Selected</Text>
-                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Ready for document embedding</Text>
-                    </View>
-                  </View>
-                ) : agreement?.signature_url ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                    <Image source={{ uri: agreement.signature_url }} style={{ width: 80, height: 40, borderRadius: 4, marginRight: 12, borderWidth: 1, borderColor: colors.border, resizeMode: 'contain', backgroundColor: '#fff' }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 12 }}>Signature on File</Text>
-                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>Tap Change Signature to update</Text>
+                      <Text style={styles.docStatusReady}>Photo Attached</Text>
+                      <Text style={styles.docSub}>Ready for document embedding</Text>
                     </View>
                   </View>
                 ) : (
-                  <TouchableOpacity onPress={pickSignature} style={{ height: 60, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.border, borderRadius: 8, justifyContent: 'center', alignItems: 'center', flexDirection: 'row' }}>
-                    <Ionicons name="pencil-outline" size={20} color={colors.textMuted} style={{ marginRight: 8 }} />
-                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>Tap to upload your signature image</Text>
+                  <TouchableOpacity onPress={pickPhoto} style={styles.uploadPlaceholder}>
+                    <Ionicons name="camera-outline" size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>Upload tenant headshot photo</Text>
                   </TouchableOpacity>
+                )}
+              </View>
+
+              {/* 3. Signature Pad */}
+              <View style={{ marginTop: space.sm }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <Text style={styles.uploadLabel}>Signature *</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity onPress={handleClearSignature} style={styles.clearBtn}>
+                      <Ionicons name="refresh-outline" size={14} color="#DC2626" style={{ marginRight: 3 }} />
+                      <Text style={styles.clearBtnText}>Clear</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={pickSignatureFile} style={styles.uploadBtn}>
+                      <Text style={styles.uploadBtnText}>Upload File</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Interactive WebView Drawing Pad */}
+                <View style={styles.signatureContainer}>
+                  <WebView
+                    ref={webViewRef}
+                    originWhitelist={['*']}
+                    source={{ html: SIGNATURE_HTML }}
+                    style={{ flex: 1, backgroundColor: '#F9FAFB' }}
+                    scrollEnabled={false}
+                    javaScriptEnabled
+                    onMessage={(event) => {
+                      try {
+                        const parsed = JSON.parse(event.nativeEvent.data);
+                        if (parsed.type === 'signature' && parsed.data) {
+                          setSignature({ uri: parsed.data, base64: parsed.data });
+                        } else if (parsed.type === 'clear') {
+                          setSignature(null);
+                        }
+                      } catch {}
+                    }}
+                  />
+                  {!signature && (
+                    <View style={styles.signatureWatermark} pointerEvents="none">
+                      <Ionicons name="pencil-outline" size={18} color="#9CA3AF" />
+                      <Text style={{ color: '#9CA3AF', fontSize: 12, marginLeft: 6 }}>
+                        Sign with your finger inside the box
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {signature?.uri && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 6 }}>
+                    <Ionicons name="checkmark-circle" size={16} color={semanticColor.success.solid} />
+                    <Text style={{ color: semanticColor.success.solid, fontSize: 12, fontWeight: '700' }}>
+                      Signature Captured & Ready
+                    </Text>
+                  </View>
                 )}
               </View>
             </Card>
 
-            {/* Submit */}
+            {/* ── SUBMIT BUTTON ── */}
             <Button
-              label="Submit Agreement & KYC"
+              label={submitMutation.isPending ? 'Submitting Details...' : 'Submit Details'}
               loading={submitMutation.isPending}
               disabled={submitMutation.isPending}
               onPress={() => {
@@ -547,14 +919,14 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
                 }
                 Alert.alert(
                   'Confirm Submission',
-                  'By submitting, you confirm that all details provided are accurate and you agree to the tenancy terms.',
+                  'Your details will be compiled into a Paying Guest Word Agreement (.docx) and sent to the owner and staff.',
                   [
                     { text: 'Cancel', style: 'cancel' },
-                    { text: 'Submit', onPress: () => submitMutation.mutate() },
+                    { text: 'Submit Details', onPress: () => submitMutation.mutate() },
                   ]
                 );
               }}
-              style={{ marginTop: space.md, marginBottom: space.xl }}
+              style={{ marginTop: space.sm, marginBottom: space.xl }}
             />
           </ScrollView>
         </KeyboardAvoidingView>
@@ -562,61 +934,6 @@ export const TenantAgreementForm: React.FC<{ route: any; navigation: any }> = ({
     </SafeAreaView>
   );
 };
-
-// ─── Inline tracker sub-component ────────────────────────────────────────────
-
-const STAGE_LABELS = [
-  'Form Submitted',
-  'Docx Generated & Under Review',
-  'Offline Stamp & Notary Verification',
-  'Final Approval & Archived',
-];
-
-const AgreementTrackerInline: React.FC<{ stage: number; colors: any; font: any }> = ({
-  stage,
-  colors,
-  font,
-}) => (
-  <View style={{ width: '100%' }}>
-    {STAGE_LABELS.map((label, i) => {
-      const n = i + 1;
-      const done = stage >= n;
-      return (
-        <View key={n} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 }}>
-          <View style={{ alignItems: 'center', width: 28 }}>
-            <View
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: 12,
-                backgroundColor: done ? semanticColor.success.solid : colors.border,
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}
-            >
-              <Ionicons name={done ? 'checkmark' : 'ellipse-outline'} size={12} color={done ? '#fff' : colors.textMuted} />
-            </View>
-            {i < STAGE_LABELS.length - 1 && (
-              <View style={{ width: 2, height: 18, backgroundColor: done ? semanticColor.success.solid : colors.border, marginTop: 2 }} />
-            )}
-          </View>
-          <Text
-            style={{
-              flex: 1,
-              marginLeft: 10,
-              paddingTop: 3,
-              color: done ? colors.text : colors.textMuted,
-              fontWeight: done ? '600' : '400',
-              fontSize: font.caption.fontSize,
-            }}
-          >
-            {label}
-          </Text>
-        </View>
-      );
-    })}
-  </View>
-);
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -627,5 +944,124 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 8,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    paddingBottom: 8,
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4B5563',
+    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  uploadBlock: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  uploadLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  uploadBtn: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  uploadBtnText: {
+    color: '#4338CA',
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  clearBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  clearBtnText: {
+    color: '#DC2626',
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  previewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  docThumb: {
+    width: 70,
+    height: 48,
+    borderRadius: 6,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  photoThumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  docStatusReady: {
+    color: '#059669',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  docSub: {
+    color: '#6B7280',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  uploadPlaceholder: {
+    height: 48,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  signatureContainer: {
+    height: 180,
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  signatureWatermark: {
+    position: 'absolute',
+    top: 10,
+    left: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });

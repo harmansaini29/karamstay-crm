@@ -191,7 +191,14 @@ class AgreementService:
         unit = self.prop_repo.get_unit(tenancy.unit_id) if tenancy else None
         property_ = self.prop_repo.get_property(unit.property_id) if unit else None
 
-        docx_bytes = build_agreement_docx(agreement, tenant, tenancy, unit, property_)
+        docx_bytes = build_agreement_docx(
+            agreement,
+            tenant,
+            tenancy,
+            unit,
+            property_,
+            signature_bytes=signature_bytes,
+        )
         pdf_bytes = build_agreement_pdf(
             agreement,
             tenant,
@@ -285,7 +292,14 @@ class AgreementService:
                     doc_label = f"{upload.upload_type.replace('_', ' ').title()} - {upload.file_name}"
                     offline_doc_items.append((doc_label, raw))
 
-        docx_bytes = build_agreement_docx(agreement, tenant, tenancy, unit, property_)
+        docx_bytes = build_agreement_docx(
+            agreement,
+            tenant,
+            tenancy,
+            unit,
+            property_,
+            signature_bytes=signature_bytes,
+        )
         pdf_bytes = build_agreement_pdf(
             agreement,
             tenant,
@@ -549,7 +563,14 @@ class AgreementService:
                     offline_doc_items.append((doc_label, raw))
 
         # 1. Compile & upload docx
-        docx_bytes = build_agreement_docx(agreement, tenant, tenancy, unit, property_)
+        docx_bytes = build_agreement_docx(
+            agreement,
+            tenant,
+            tenancy,
+            unit,
+            property_,
+            signature_bytes=signature_bytes,
+        )
         docx_dest_key = f"{s3_folder}/agreement_{agreement.id}_{agreement.template_id}.docx"
         self.storage.upload_bytes(
             key=docx_dest_key,

@@ -70,7 +70,7 @@ interface Agreement {
 interface OfflineUpload {
   id: number;
   agreement_id: number;
-  upload_type: 'stamp_paper' | 'police_noc' | 'notary_stamp';
+  upload_type: 'stamp_paper' | 'executed_pdf' | 'police_noc' | 'notary_stamp';
   file_name: string;
   status: 'PENDING' | 'STAMPED' | 'NOTARIZED' | 'APPROVED';
   notes: string | null;
@@ -91,7 +91,8 @@ const STAGES = [
 ] as const;
 
 const UPLOAD_TYPES: { type: OfflineUpload['upload_type']; label: string; icon: string }[] = [
-  { type: 'stamp_paper', label: 'Stamp Paper', icon: 'receipt-outline' },
+  { type: 'stamp_paper', label: 'Stamp Paper Page (One-by-One Page Scan)', icon: 'copy-outline' },
+  { type: 'executed_pdf', label: 'Whole Executed Agreement (PDF Document)', icon: 'document-text-outline' },
   { type: 'police_noc', label: 'Police NOC / Verification', icon: 'shield-checkmark-outline' },
   { type: 'notary_stamp', label: 'Notary / Registrar Stamp', icon: 'ribbon-outline' },
 ];
@@ -486,6 +487,97 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
     ]);
   };
 
+  const handleCaptureStampPage = async (source: 'camera' | 'gallery') => {
+    if (!agreement) return;
+    if (isPickingRef.current) return;
+    isPickingRef.current = true;
+    try {
+      const pageNum = uploads.filter((u) => u.upload_type === 'stamp_paper').length + 1;
+      let asset: any = null;
+      if (source === 'camera') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('Permission Denied', 'Camera access is required to capture stamp paper page.');
+          return;
+        }
+        const res = await ImagePicker.launchCameraAsync({
+          quality: 0.8,
+          allowsEditing: false,
+          base64: true,
+        });
+        if (!res.canceled && res.assets?.length) asset = res.assets[0];
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('Permission Denied', 'Gallery access is required.');
+          return;
+        }
+        const res = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 0.8,
+          allowsEditing: false,
+          base64: true,
+        });
+        if (!res.canceled && res.assets?.length) asset = res.assets[0];
+      }
+
+      if (asset) {
+        let b64 = asset.base64;
+        if (!b64 && asset.uri) {
+          try {
+            b64 = await FileSystem.readAsStringAsync(asset.uri, {
+              encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+            });
+          } catch {}
+        }
+        uploadMutation.mutate({
+          agId: agreement.id,
+          upload_type: 'stamp_paper',
+          file_name: `stamp_paper_page_${pageNum}.jpg`,
+          file_base64: b64 || undefined,
+        });
+      }
+    } catch (e: any) {
+      Alert.alert('Capture Error', e?.message || 'Could not capture stamp paper page');
+    } finally {
+      isPickingRef.current = false;
+    }
+  };
+
+  const handleUploadExecutedPdf = async () => {
+    if (!agreement) return;
+    if (isPickingRef.current) return;
+    isPickingRef.current = true;
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf'],
+        copyToCacheDirectory: true,
+      });
+      if (!res.canceled && res.assets?.length) {
+        const asset = res.assets[0];
+        const fileName = asset.name || `executed_agreement_${agreement.id}.pdf`;
+        let b64: string | undefined = undefined;
+        if (asset.uri) {
+          try {
+            b64 = await FileSystem.readAsStringAsync(asset.uri, {
+              encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+            });
+          } catch {}
+        }
+        uploadMutation.mutate({
+          agId: agreement.id,
+          upload_type: 'executed_pdf',
+          file_name: fileName,
+          file_base64: b64,
+        });
+      }
+    } catch (e: any) {
+      Alert.alert('PDF Upload Error', e?.message || 'Could not upload PDF document');
+    } finally {
+      isPickingRef.current = false;
+    }
+  };
+
 
   // ── Render helpers ─────────────────────────────────────────────────────────
 
@@ -691,105 +783,249 @@ export const AgreementWorkspace: React.FC<{ route: any; navigation: any }> = ({
     </Card>
   );
 
-  const renderOfflineUploads = () => (
-    <Card style={{ borderWidth: 1, marginBottom: space.md }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
-        <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
-          Offline Verification Documents
-        </Text>
-        <TouchableOpacity
-          onPress={() => setUploadModalVisible(true)}
-          activeOpacity={0.8}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: colors.primary,
-            paddingHorizontal: 16,
-            paddingVertical: 10,
-            borderRadius: 10,
-            gap: 8,
-            minHeight: 42,
-            shadowColor: colors.primary,
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.25,
-            shadowRadius: 4,
-            elevation: 3,
-          }}
-        >
-          <Ionicons name="add-circle" size={20} color="#fff" />
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14, letterSpacing: 0.3 }}>+ Add Document</Text>
-        </TouchableOpacity>
-      </View>
+  const renderOfflineUploads = () => {
+    const stampPages = uploads.filter((u) => u.upload_type === 'stamp_paper');
+    const executedPdfs = uploads.filter((u) => u.upload_type === 'executed_pdf');
+    const otherDocs = uploads.filter((u) => u.upload_type !== 'stamp_paper' && u.upload_type !== 'executed_pdf');
 
-      {uploads.length === 0 ? (
-        <View style={{ paddingVertical: space.md, alignItems: 'center' }}>
-          <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, textAlign: 'center', marginBottom: space.sm }}>
-            No offline documents uploaded yet. Add stamp paper photos, police verification, or notary stamps here.
+    return (
+      <View style={{ marginBottom: space.md }}>
+        {/* Physical Stamp Paper Execution Card */}
+        <Card style={{ borderWidth: 1, borderColor: colors.border, marginBottom: space.md, padding: space.md }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+            <Ionicons name="document-attach-outline" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+            <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
+              Physical Stamp Paper Execution
+            </Text>
+          </View>
+          <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 14 }}>
+            The Word agreement contains the draft legal clauses. Once pasted or printed onto physical stamp paper,
+            record execution via Option 1 (page-by-page photos) OR Option 2 (complete executed PDF).
           </Text>
-          <TouchableOpacity
-            onPress={() => setUploadModalVisible(true)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              borderWidth: 1,
-              borderColor: colors.primary,
-              backgroundColor: colors.primary + '10',
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: 8,
-              gap: 6,
-            }}
-          >
-            <Ionicons name="cloud-upload-outline" size={16} color={colors.primary} />
-            <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>Upload First Document</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        uploads.map((up) => (
-          <TouchableOpacity key={up.id} onPress={() => setStatusModalUpload(up)} activeOpacity={0.75}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              <View style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: colors.primary + '15', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-                <Ionicons
-                  name={(UPLOAD_TYPES.find((t) => t.type === up.upload_type)?.icon ?? 'document-outline') as any}
-                  size={18}
-                  color={colors.primary}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.caption.fontSize }}>{up.file_name}</Text>
-                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-                  {UPLOAD_TYPES.find((t) => t.type === up.upload_type)?.label} · {new Date(up.uploaded_at).toLocaleDateString()}
+
+          {/* Option 1: One-by-one page clicks */}
+          <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="camera-outline" size={17} color={colors.primary} />
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+                  Option 1: One-by-One Page Clicks
                 </Text>
               </View>
-              {up.download_url || up.file_url || up.id ? (
-                <TouchableOpacity
-                  onPress={async () => {
-                    const fallbackUrl = agreement?.id
-                      ? `${apiClient.defaults.baseURL || ''}/agreements/${agreement.id}/uploads/${up.id}/file`
-                      : null;
-                    const resolved = resolveStorageUrl(up.download_url || up.file_url) || fallbackUrl;
-                    if (resolved) {
-                      await WebBrowser.openBrowserAsync(resolved);
-                    } else {
-                      Alert.alert('Notice', 'Document file is currently unavailable.');
-                    }
-                  }}
-                  style={{ padding: 6, marginRight: 6 }}
-                >
-                  <Ionicons name="eye-outline" size={18} color={colors.primary} />
-                </TouchableOpacity>
-              ) : null}
-              <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: (UPLOAD_STATUS_COLORS[up.status] || '#888') + '20' }}>
-                <Text style={{ color: UPLOAD_STATUS_COLORS[up.status] || '#888', fontWeight: '700', fontSize: 11 }}>
-                  {up.status}
-                </Text>
-              </View>
+              {stampPages.length > 0 && (
+                <View style={{ backgroundColor: semanticColor.success.bg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                  <Text style={{ color: semanticColor.success.fg, fontWeight: '700', fontSize: 11 }}>
+                    {stampPages.length} {stampPages.length === 1 ? 'Page' : 'Pages'} Captured
+                  </Text>
+                </View>
+              )}
             </View>
-          </TouchableOpacity>
-        ))
-      )}
-    </Card>
-  );
+            <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: 10 }}>
+              Photograph or scan each stamp paper page sequentially.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => handleCaptureStampPage('camera')}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: colors.primary,
+                  paddingVertical: 9,
+                  borderRadius: 8,
+                  gap: 6,
+                }}
+              >
+                <Ionicons name="camera" size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Click Page</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleCaptureStampPage('gallery')}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: colors.primary + '15',
+                  paddingVertical: 9,
+                  borderRadius: 8,
+                  gap: 6,
+                }}
+              >
+                <Ionicons name="images-outline" size={16} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>Add from Gallery</Text>
+              </TouchableOpacity>
+            </View>
+
+            {stampPages.length > 0 && (
+              <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+                {stampPages.map((up, idx) => (
+                  <View key={up.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                      <View style={{ backgroundColor: colors.primary + '20', width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 8 }}>
+                        <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>{idx + 1}</Text>
+                      </View>
+                      <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600', flex: 1 }} numberOfLines={1}>
+                        Page {idx + 1}: {up.file_name}
+                      </Text>
+                    </View>
+                    {(up.download_url || up.file_url) && (
+                      <TouchableOpacity
+                        onPress={async () => {
+                          const url = resolveStorageUrl(up.download_url || up.file_url);
+                          if (url) await WebBrowser.openBrowserAsync(url);
+                        }}
+                        style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                      >
+                        <Ionicons name="eye-outline" size={17} color={colors.primary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* Option 2: Directly upload the whole PDF */}
+          <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="document-text-outline" size={17} color={colors.primary} />
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+                  Option 2: Upload Whole Executed Agreement PDF
+                </Text>
+              </View>
+              {executedPdfs.length > 0 && (
+                <View style={{ backgroundColor: semanticColor.success.bg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                  <Text style={{ color: semanticColor.success.fg, fontWeight: '700', fontSize: 11 }}>PDF Uploaded</Text>
+                </View>
+              )}
+            </View>
+            <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: 10 }}>
+              Upload the complete signed and executed agreement document as a single PDF.
+            </Text>
+            <TouchableOpacity
+              onPress={handleUploadExecutedPdf}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: colors.surface,
+                borderWidth: 1.5,
+                borderColor: colors.primary,
+                paddingVertical: 10,
+                borderRadius: 8,
+                gap: 8,
+              }}
+            >
+              <Ionicons name="cloud-upload" size={18} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
+                {executedPdfs.length > 0 ? 'Replace Executed PDF' : 'Upload Executed Agreement (PDF)'}
+              </Text>
+            </TouchableOpacity>
+
+            {executedPdfs.length > 0 && (
+              <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }}>
+                {executedPdfs.map((up) => (
+                  <View key={up.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                      <Ionicons name="checkmark-circle" size={16} color={semanticColor.success.solid} style={{ marginRight: 6 }} />
+                      <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600', flex: 1 }} numberOfLines={1}>
+                        {up.file_name}
+                      </Text>
+                    </View>
+                    {(up.download_url || up.file_url) && (
+                      <TouchableOpacity
+                        onPress={async () => {
+                          const url = resolveStorageUrl(up.download_url || up.file_url);
+                          if (url) await WebBrowser.openBrowserAsync(url);
+                        }}
+                        style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                      >
+                        <Ionicons name="eye-outline" size={17} color={colors.primary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        </Card>
+
+        {/* Other Verification Documents Card */}
+        <Card style={{ borderWidth: 1, borderColor: colors.border, padding: space.md }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+            <View>
+              <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: font.h3.fontSize }}>
+                Additional Legal Documents
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                Police verification NOC & Notary stamps
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setUploadModalVisible(true)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.primary,
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                borderRadius: 8,
+                gap: 6,
+              }}
+            >
+              <Ionicons name="add-circle" size={16} color="#fff" />
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>+ Add Doc</Text>
+            </TouchableOpacity>
+          </View>
+
+          {otherDocs.length === 0 ? (
+            <Text style={{ color: colors.textMuted, fontSize: 12, textAlign: 'center', paddingVertical: 8 }}>
+              No additional legal documents uploaded yet.
+            </Text>
+          ) : (
+            otherDocs.map((up) => (
+              <TouchableOpacity key={up.id} onPress={() => setStatusModalUpload(up)} activeOpacity={0.75}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <View style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: colors.primary + '15', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                    <Ionicons
+                      name={(UPLOAD_TYPES.find((t) => t.type === up.upload_type)?.icon ?? 'document-outline') as any}
+                      size={18}
+                      color={colors.primary}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: '600', fontSize: font.caption.fontSize }}>{up.file_name}</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                      {UPLOAD_TYPES.find((t) => t.type === up.upload_type)?.label} · {new Date(up.uploaded_at).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  {(up.download_url || up.file_url) && (
+                    <TouchableOpacity
+                      onPress={async () => {
+                        const url = resolveStorageUrl(up.download_url || up.file_url);
+                        if (url) await WebBrowser.openBrowserAsync(url);
+                      }}
+                      style={{ padding: 6, marginRight: 6 }}
+                    >
+                      <Ionicons name="eye-outline" size={18} color={colors.primary} />
+                    </TouchableOpacity>
+                  )}
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: (UPLOAD_STATUS_COLORS[up.status] || '#888') + '20' }}>
+                    <Text style={{ color: UPLOAD_STATUS_COLORS[up.status] || '#888', fontWeight: '700', fontSize: 11 }}>
+                      {up.status}
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
+        </Card>
+      </View>
+    );
+  };
 
 
   return (
