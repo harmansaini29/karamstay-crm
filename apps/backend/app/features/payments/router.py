@@ -95,7 +95,15 @@ def _to_invoice_response(inv: Invoice, db: Session | None = None) -> InvoiceResp
         res.virtual_ifsc = tenancy.virtual_ifsc
         res.virtual_vpa = tenancy.virtual_vpa
         res.bank_provider = tenancy.bank_provider
-        tenant_name = tenancy.tenant.name if getattr(tenancy, "tenant", None) else None
+        tenant = getattr(tenancy, "tenant", None)
+        if tenant is None and tenancy.tenant_id and db is not None:
+            try:
+                from app.features.tenants.models import Tenant
+
+                tenant = db.get(Tenant, tenancy.tenant_id)
+            except Exception:
+                tenant = None
+        tenant_name = tenant.name if tenant else None
         res.virtual_account_name = f"KaramStay - {tenant_name}" if tenant_name else "KaramStay"
 
     return res

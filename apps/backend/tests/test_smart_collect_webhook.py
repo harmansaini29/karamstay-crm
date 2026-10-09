@@ -506,3 +506,293 @@ def test_webhook_smart_collect_advance_payment_without_pending_invoice(client, d
     assert ledger_entry.direction == "credit"
     assert ledger_entry.amount == Decimal("12000.00")
 
+
+
+def test_webhook_smart_collect_multi_invoice_fifo_settlement(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "smart_collect_webhook_secret", "secret_multi")
+    monkeypatch.setattr(settings, "smart_collect_whitelisted_ips", [])
+
+    owner = create_user(db_session, role_name="owner", email="owner_multi1@example.com")
+    tenancy = _seed_tenancy_with_van(db_session, owner.id)
+    inv1 = Invoice(
+        tenancy_id=tenancy.id,
+        billing_period="2026-06",
+        due_date=date(2026, 6, 5),
+        amount=Decimal("5000.00"),
+        status="pending",
+    )
+    inv2 = Invoice(
+        tenancy_id=tenancy.id,
+        billing_period="2026-07",
+        due_date=date(2026, 7, 5),
+        amount=Decimal("5000.00"),
+        status="pending",
+    )
+    db_session.add_all([inv1, inv2])
+    db_session.commit()
+
+    payload = {
+        "virtual_account_number": tenancy.virtual_account_number,
+        "amount": "10000.00",
+        "utr_number": "UTR_MULTI_SETTLE_001",
+        "payment_mode": "IMPS",
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _generate_hmac_header(body, "secret_multi")
+
+    response = client.post(
+        "/api/v1/payments/webhook/smart-collect",
+        data=body,
+        headers={"Content-Type": "application/json", "X-Webhook-Signature": sig},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert inv1.id in data["settled_invoice_ids"]
+    assert inv2.id in data["settled_invoice_ids"]
+
+    db_session.refresh(inv1)
+    db_session.refresh(inv2)
+    assert inv1.status == "paid"
+    assert inv2.status == "paid"
+
+
+def test_webhook_smart_collect_multi_invoice_partial_and_split(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "smart_collect_webhook_secret", "secret_split")
+    monkeypatch.setattr(settings, "smart_collect_whitelisted_ips", [])
+
+    owner = create_user(db_session, role_name="owner", email="owner_split@example.com")
+    tenancy = _seed_tenancy_with_van(db_session, owner.id)
+    inv1 = Invoice(
+        tenancy_id=tenancy.id,
+        billing_period="2026-06",
+        due_date=date(2026, 6, 5),
+        amount=Decimal("5000.00"),
+        status="pending",
+    )
+    inv2 = Invoice(
+        tenancy_id=tenancy.id,
+        billing_period="2026-07",
+        due_date=date(2026, 7, 5),
+        amount=Decimal("5000.00"),
+        status="pending",
+    )
+    db_session.add_all([inv1, inv2])
+    db_session.commit()
+
+    payload = {
+        "virtual_account_number": tenancy.virtual_account_number,
+        "amount": "8000.00",
+        "utr_number": "UTR_SPLIT_001",
+        "payment_mode": "NEFT",
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _generate_hmac_header(body, "secret_split")
+
+    response = client.post(
+        "/api/v1/payments/webhook/smart-collect",
+        data=body,
+        headers={"Content-Type": "application/json", "X-Webhook-Signature": sig},
+    )
+    assert response.status_code == 200
+
+    db_session.refresh(inv1)
+    db_session.refresh(inv2)
+    assert inv1.status == "paid"
+    assert inv2.status == "partial"
+
+
+def test_webhook_smart_collect_disabled_feature_flag(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "smart_collect_enabled", False)
+    payload = {
+        "virtual_account_number": "KARMI000123",
+        "amount": "5000.00",
+        "utr_number": "UTR_FLAG_OFF",
+    }
+    response = client.post(
+        "/api/v1/payments/webhook/smart-collect",
+        json=payload,
+    )
+    assert response.status_code == 503
+    err_msg = response.json().get("message") or response.json().get("detail", "")
+    assert "disabled" in err_msg.lower()
+
+
+def test_webhook_smart_collect_backfill_disabled_feature_flag(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "smart_collect_enabled", False)
+    create_user(db_session, role_name="owner", email="owner_bf_off@example.com")
+    headers = auth_headers(client, email="owner_bf_off@example.com")
+
+    response = client.post("/api/v1/payments/smart-collect/backfill", headers=headers)
+    assert response.status_code == 503
+    err_msg = response.json().get("message") or response.json().get("detail", "")
+    assert "disabled" in err_msg.lower()
+
+
+def test_webhook_smart_collect_hdfc_signature_without_bank_provider_in_payload(client, db_session, monkeypatch):
+    hdfc_secret = "hdfc_cms_bank_secret_998877"
+    monkeypatch.setattr(settings, "hdfc_cms_webhook_secret", hdfc_secret)
+    monkeypatch.setattr(settings, "icici_cms_webhook_secret", "icici_different_secret")
+    monkeypatch.setattr(settings, "smart_collect_webhook_secret", None)
+    monkeypatch.setattr(settings, "smart_collect_whitelisted_ips", [])
+
+    owner = create_user(db_session, role_name="owner", email="owner_hdfc_noprov@example.com")
+    tenancy = _seed_tenancy_with_van(db_session, owner.id, bank_provider="hdfc")
+    _seed_invoice(db_session, tenancy, amount="6500.00")
+
+    payload = {
+        "BeneAccNo": tenancy.virtual_account_number,
+        "TxnAmt": "6500.00",
+        "BankRefNo": "HDFC_CMS_REF_AUTO",
+        "TransferType": "RTGS",
+        "RemitterName": "Tenant Testing",
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _generate_hmac_header(body, hdfc_secret)
+
+    response = client.post(
+        "/api/v1/payments/webhook/smart-collect",
+        data=body,
+        headers={"Content-Type": "application/json", "X-Webhook-Signature": sig},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+
+
+def test_webhook_smart_collect_date_only_transaction_date_accepted(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "smart_collect_webhook_secret", "date_secret")
+    monkeypatch.setattr(settings, "smart_collect_whitelisted_ips", [])
+
+    owner = create_user(db_session, role_name="owner", email="owner_date_test@example.com")
+    tenancy = _seed_tenancy_with_van(db_session, owner.id)
+    _seed_invoice(db_session, tenancy, amount="5000.00")
+
+    payload = {
+        "virtual_account_number": tenancy.virtual_account_number,
+        "amount": "5000.00",
+        "utr_number": "UTR_DATE_ONLY_001",
+        "transaction_date": str(utc_now().date()),
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _generate_hmac_header(body, "date_secret")
+
+    response = client.post(
+        "/api/v1/payments/webhook/smart-collect",
+        data=body,
+        headers={"Content-Type": "application/json", "X-Webhook-Signature": sig},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+
+
+def test_webhook_smart_collect_indian_timestamp_format(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "smart_collect_webhook_secret", "indian_ts_secret")
+    monkeypatch.setattr(settings, "smart_collect_whitelisted_ips", [])
+
+    owner = create_user(db_session, role_name="owner", email="owner_indian_ts@example.com")
+    tenancy = _seed_tenancy_with_van(db_session, owner.id)
+    _seed_invoice(db_session, tenancy, amount="5000.00")
+
+    now_indian = utc_now().strftime("%d/%m/%Y %H:%M:%S")
+    payload = {
+        "virtual_account_number": tenancy.virtual_account_number,
+        "amount": "5000.00",
+        "utr_number": "UTR_INDIAN_TS_001",
+        "timestamp": now_indian,
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _generate_hmac_header(body, "indian_ts_secret")
+
+    response = client.post(
+        "/api/v1/payments/webhook/smart-collect",
+        data=body,
+        headers={"Content-Type": "application/json", "X-Webhook-Signature": sig},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+
+
+def test_webhook_smart_collect_ip_whitelist_cidr(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "smart_collect_webhook_secret", "cidr_secret")
+    monkeypatch.setattr(settings, "smart_collect_whitelisted_ips", ["103.14.160.0/24"])
+
+    owner = create_user(db_session, role_name="owner", email="owner_cidr@example.com")
+    tenancy = _seed_tenancy_with_van(db_session, owner.id)
+    _seed_invoice(db_session, tenancy, amount="3000.00")
+
+    payload = {
+        "virtual_account_number": tenancy.virtual_account_number,
+        "amount": "3000.00",
+        "utr_number": "UTR_CIDR_PASS",
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _generate_hmac_header(body, "cidr_secret")
+
+    response = client.post(
+        "/api/v1/payments/webhook/smart-collect",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Webhook-Signature": sig,
+            "X-Forwarded-For": "103.14.160.55",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+
+    response_blocked = client.post(
+        "/api/v1/payments/webhook/smart-collect",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Webhook-Signature": sig,
+            "X-Forwarded-For": "103.14.161.55",
+        },
+    )
+    assert response_blocked.status_code == 403
+
+
+def test_webhook_smart_collect_concurrent_identical_requests(client, db_session, monkeypatch):
+    import concurrent.futures
+
+    monkeypatch.setattr(settings, "smart_collect_webhook_secret", "secret_concurrent")
+    monkeypatch.setattr(settings, "smart_collect_whitelisted_ips", [])
+
+    owner = create_user(db_session, role_name="owner", email="owner_concurrent@example.com")
+    tenancy = _seed_tenancy_with_van(db_session, owner.id)
+    _seed_invoice(db_session, tenancy, amount="5000.00")
+
+    payload = {
+        "virtual_account_number": tenancy.virtual_account_number,
+        "amount": "5000.00",
+        "utr_number": "UTR_RACE_CONDITION_001",
+        "bank_reference": "REF_RACE_001",
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _generate_hmac_header(body, "secret_concurrent")
+    headers = {"Content-Type": "application/json", "X-Webhook-Signature": sig}
+
+    def call_webhook():
+        return client.post("/api/v1/payments/webhook/smart-collect", data=body, headers=headers)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(call_webhook) for _ in range(3)]
+        responses = [f.result() for f in futures]
+
+    for r in responses:
+        assert r.status_code == 200
+
+    statuses = [r.json()["status"] for r in responses]
+    assert "success" in statuses
+
+    db_session.expire_all()
+    ledger_entries = list(
+        db_session.scalars(
+            select(LedgerEntry).where(
+                LedgerEntry.tenancy_id == tenancy.id,
+                LedgerEntry.entry_type == "rent",
+            )
+        )
+    )
+    total_credited = sum(e.amount for e in ledger_entries)
+    assert total_credited == Decimal("5000.00")

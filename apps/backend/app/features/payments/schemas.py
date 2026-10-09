@@ -77,6 +77,8 @@ class SmartCollectWebhookResponse(BaseModel):
     amount: float | None = None
     utr_number: str | None = None
     tenancy_id: int | None = None
+    payment_ids: list[int] = Field(default_factory=list)
+    settled_invoice_ids: list[int] = Field(default_factory=list)
 
 
 class SmartCollectBackfillResponse(BaseModel):

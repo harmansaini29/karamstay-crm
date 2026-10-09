@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import ipaddress
 import logging
 import secrets
 from collections.abc import Mapping
@@ -9,6 +10,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLogService
@@ -22,9 +24,31 @@ from app.features.tenants.models import Tenancy, Tenant
 logger = logging.getLogger("karamstay.smart_collect")
 
 
-def resolve_bank_provider(provider_hint: str | None = None) -> str:
-    """Normalize bank provider to either 'icici' or 'hdfc'."""
-    raw = (provider_hint or settings.smart_collect_provider or "icici").strip().lower()
+def resolve_bank_provider(
+    provider_hint: str | None = None,
+    van: str | None = None,
+) -> str:
+    """Normalize bank provider to either 'icici' or 'hdfc'.
+
+    Deduces provider from explicit hint, VAN prefix, or system config.
+    """
+    if provider_hint:
+        hint_lower = provider_hint.strip().lower()
+        if "hdfc" in hint_lower:
+            return "hdfc"
+        if "icici" in hint_lower:
+            return "icici"
+
+    if van:
+        van_upper = van.strip().upper()
+        hdfc_prefix = (settings.hdfc_cms_prefix or "KARMH").strip().upper()
+        icici_prefix = (settings.icici_cms_prefix or "KARMI").strip().upper()
+        if van_upper.startswith(hdfc_prefix):
+            return "hdfc"
+        if van_upper.startswith(icici_prefix):
+            return "icici"
+
+    raw = (settings.smart_collect_provider or "icici").strip().lower()
     if "hdfc" in raw:
         return "hdfc"
     return "icici"
@@ -81,17 +105,30 @@ def assign_virtual_account_to_tenancy(db: Session, tenancy: Tenancy) -> Tenancy:
     tenancy.virtual_vpa = va_data["virtual_vpa"]
     tenancy.bank_provider = va_data["bank_provider"]
 
-    if tenancy.tenant:
-        tenancy.tenant.virtual_account_number = va_data["virtual_account_number"]
-        tenancy.tenant.virtual_ifsc = va_data["virtual_ifsc"]
-        tenancy.tenant.virtual_vpa = va_data["virtual_vpa"]
-        tenancy.tenant.bank_provider = va_data["bank_provider"]
+    tenant = tenancy.tenant
+    if tenant is None and tenancy.tenant_id:
+        try:
+            tenant = db.get(Tenant, tenancy.tenant_id)
+        except Exception:
+            tenant = None
+
+    if tenant:
+        tenant.virtual_account_number = va_data["virtual_account_number"]
+        tenant.virtual_ifsc = va_data["virtual_ifsc"]
+        tenant.virtual_vpa = va_data["virtual_vpa"]
+        tenant.bank_provider = va_data["bank_provider"]
 
     return tenancy
 
 
 def backfill_virtual_accounts(db: Session) -> int:
     """Backfills deterministic virtual accounts for all active tenancies missing one."""
+    if not settings.smart_collect_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Smart Collect is currently disabled",
+        )
+
     stmt = (
         select(Tenancy)
         .where(
@@ -139,26 +176,39 @@ def verify_webhook_signature(
     headers: Mapping[str, str],
     body_bytes: bytes,
     bank_provider: str | None = None,
+    van: str | None = None,
 ) -> bool:
-    """Verifies cryptographic HMAC-SHA256 signature or secret token in constant time."""
-    # Determine the configured secret
-    provider = resolve_bank_provider(bank_provider)
-    if provider == "hdfc":
-        secret = settings.hdfc_cms_webhook_secret or settings.smart_collect_webhook_secret
-    else:
-        secret = settings.icici_cms_webhook_secret or settings.smart_collect_webhook_secret
+    """Verifies cryptographic HMAC-SHA256 signature or secret token in constant time.
 
-    # If secret is unset, allow in local development only
-    if not secret:
+    Checks primary provider secret, and tests alternative configured bank secrets
+    if bank_provider is omitted or ambiguous in bank webhook payloads.
+    """
+    provider = resolve_bank_provider(bank_provider, van=van)
+
+    # Build candidate secret list with primary provider prioritized
+    candidate_secrets: list[str] = []
+    if provider == "hdfc":
+        if settings.hdfc_cms_webhook_secret:
+            candidate_secrets.append(settings.hdfc_cms_webhook_secret)
+        if settings.icici_cms_webhook_secret:
+            candidate_secrets.append(settings.icici_cms_webhook_secret)
+    else:
+        if settings.icici_cms_webhook_secret:
+            candidate_secrets.append(settings.icici_cms_webhook_secret)
+        if settings.hdfc_cms_webhook_secret:
+            candidate_secrets.append(settings.hdfc_cms_webhook_secret)
+
+    if settings.smart_collect_webhook_secret and settings.smart_collect_webhook_secret not in candidate_secrets:
+        candidate_secrets.append(settings.smart_collect_webhook_secret)
+
+    # If secret is unset across the board, allow in local development only
+    if not candidate_secrets:
         if settings.environment == "local":
             logger.warning("Smart Collect webhook secret is unset; bypassing signature in local mode.")
             return True
         logger.error("Smart Collect webhook secret is not configured in non-local environment.")
         return False
 
-    secret_bytes = secret.encode("utf-8")
-
-    # 1. Check HMAC signature headers (case-insensitive search)
     header_lower = {k.lower(): v for k, v in headers.items()}
     provided_sig = (
         header_lower.get("x-webhook-signature")
@@ -168,28 +218,31 @@ def verify_webhook_signature(
         or header_lower.get("signature")
     )
 
-    if provided_sig:
-        # Strip sha256= prefix if present
-        clean_sig = provided_sig.strip()
-        if clean_sig.lower().startswith("sha256="):
-            clean_sig = clean_sig[7:].strip()
-
-        computed_sig = hmac.new(secret_bytes, body_bytes, hashlib.sha256).hexdigest()
-        if hmac.compare_digest(computed_sig.lower(), clean_sig.lower()):
-            return True
-
-    # 2. Check secret token headers / auth bearer
     token_header = (
         header_lower.get("x-webhook-secret")
         or header_lower.get("x-api-key")
         or header_lower.get("authorization")
     )
-    if token_header:
-        candidate = token_header.strip()
-        if candidate.lower().startswith("bearer "):
-            candidate = candidate[7:].strip()
-        if secrets.compare_digest(candidate, secret):
-            return True
+
+    for secret in candidate_secrets:
+        secret_bytes = secret.encode("utf-8")
+
+        # 1. HMAC Signature verification
+        if provided_sig:
+            clean_sig = provided_sig.strip()
+            if clean_sig.lower().startswith("sha256="):
+                clean_sig = clean_sig[7:].strip()
+            computed_sig = hmac.new(secret_bytes, body_bytes, hashlib.sha256).hexdigest()
+            if hmac.compare_digest(computed_sig.lower(), clean_sig.lower()):
+                return True
+
+        # 2. Secret token / Bearer verification
+        if token_header:
+            candidate = token_header.strip()
+            if candidate.lower().startswith("bearer "):
+                candidate = candidate[7:].strip()
+            if secrets.compare_digest(candidate, secret):
+                return True
 
     return False
 
@@ -199,18 +252,44 @@ def verify_webhook_timestamp(
     payload: dict[str, Any],
     max_age_seconds: int = 300,
 ) -> bool:
-    """Rejects stale webhook payloads > max_age_seconds (5 min) old or drifting into future."""
+    """Rejects stale webhook payloads > max_age_seconds (5 min) old or drifting into future.
+
+    Distinguishes real-time request timestamps (used for replay attack mitigation)
+    from transaction/accounting value dates.
+    """
     header_lower = {k.lower(): v for k, v in headers.items()}
     ts_val = (
         header_lower.get("x-webhook-timestamp")
         or header_lower.get("x-timestamp")
         or payload.get("timestamp")
         or payload.get("txn_timestamp")
-        or payload.get("transaction_date")
+        or payload.get("req_timestamp")
+        or payload.get("request_time")
+        or payload.get("created_at")
     )
 
+    date_only_val = (
+        payload.get("transaction_date")
+        or payload.get("txn_date")
+        or payload.get("value_date")
+    )
+
+    # If no real-time timestamp header/field is provided
     if ts_val is None:
-        # If no timestamp provided in test/generic payload, consider valid
+        # If only a date-only value exists, ensure it's within +- 30 days
+        if date_only_val:
+            try:
+                date_str = str(date_only_val).strip()
+                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+                    try:
+                        d = datetime.strptime(date_str, fmt).date()
+                        now_d = utc_now().date()
+                        if abs((now_d - d).days) <= 30:
+                            return True
+                    except ValueError:
+                        continue
+            except Exception:
+                pass
         return True
 
     parsed_dt = None
@@ -239,7 +318,9 @@ def verify_webhook_timestamp(
                     "%Y-%m-%dT%H:%M:%S%z",
                     "%Y-%m-%dT%H:%M:%SZ",
                     "%Y-%m-%d %H:%M:%S",
-                    "%Y-%m-%d",
+                    "%d/%m/%Y %H:%M:%S",
+                    "%d-%m-%Y %H:%M:%S",
+                    "%Y%m%d%H%M%S",
                 ):
                     try:
                         dt = datetime.strptime(ts_str, fmt)
@@ -251,6 +332,16 @@ def verify_webhook_timestamp(
                         continue
 
     if parsed_dt is None:
+        # Check if ts_val is a date-only string within reasonable tolerance
+        if isinstance(ts_val, str):
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+                try:
+                    d = datetime.strptime(ts_val.strip(), fmt).date()
+                    now_d = utc_now().date()
+                    if abs((now_d - d).days) <= 30:
+                        return True
+                except ValueError:
+                    continue
         return False
 
     now = utc_now()
@@ -259,37 +350,68 @@ def verify_webhook_timestamp(
 
 
 def verify_client_ip(client_ip: str | None, whitelisted_ips: list[str]) -> bool:
-    """Verifies client IP against configured whitelist (if non-empty)."""
+    """Verifies client IP against configured whitelist supporting single IPs and CIDR subnets."""
     if not whitelisted_ips:
         return True
     if not client_ip:
         return False
-    return client_ip.strip() in [ip.strip() for ip in whitelisted_ips]
+    try:
+        client_addr = ipaddress.ip_address(client_ip.strip())
+    except ValueError:
+        return False
+
+    for item in whitelisted_ips:
+        item_clean = item.strip()
+        if not item_clean:
+            continue
+        try:
+            if "/" in item_clean:
+                if client_addr in ipaddress.ip_network(item_clean, strict=False):
+                    return True
+            else:
+                if client_addr == ipaddress.ip_address(item_clean):
+                    return True
+        except ValueError:
+            continue
+    return False
 
 
 def parse_smart_collect_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Normalizes payload from ICICI CMS, HDFC CMS, or standard Smart Collect format."""
+    # Case-insensitive lookup map
+    lookup = {k.lower().replace("_", ""): v for k, v in payload.items()}
+
+    def get_first(*keys: str) -> Any:
+        for k in keys:
+            normalized = k.lower().replace("_", "")
+            if normalized in lookup and lookup[normalized] is not None:
+                return lookup[normalized]
+        return None
+
     # Virtual account extraction
-    van = (
-        payload.get("virtual_account_number")
-        or payload.get("virtual_account")
-        or payload.get("van")
-        or payload.get("account_number")
-        or payload.get("CustomerCode")
-        or payload.get("BeneAccNo")
-        or payload.get("credit_acc_no")
-        or payload.get("va_number")
+    van = get_first(
+        "virtual_account_number",
+        "virtual_account",
+        "van",
+        "account_number",
+        "customercode",
+        "beneaccno",
+        "credit_acc_no",
+        "va_number",
+        "virtualaccountnumber",
+        "bene_acc_no",
     )
     if van:
         van = str(van).strip().upper()
 
     # Amount extraction
-    raw_amount = (
-        payload.get("amount")
-        or payload.get("transaction_amount")
-        or payload.get("TxnAmt")
-        or payload.get("TransferAmt")
-        or payload.get("paid_amount")
+    raw_amount = get_first(
+        "amount",
+        "transaction_amount",
+        "txnamt",
+        "transferamt",
+        "paid_amount",
+        "transfer_amount",
     )
     parsed_amount = None
     if raw_amount is not None:
@@ -299,24 +421,27 @@ def parse_smart_collect_payload(payload: dict[str, Any]) -> dict[str, Any]:
             parsed_amount = None
 
     # UTR / Bank Reference extraction
-    utr = (
-        payload.get("utr_number")
-        or payload.get("utr")
-        or payload.get("bank_reference")
-        or payload.get("bank_ref_no")
-        or payload.get("rrn")
-        or payload.get("BankRefNo")
-        or payload.get("UTR")
-        or payload.get("reference_id")
-        or payload.get("txn_id")
+    utr = get_first(
+        "utr_number",
+        "utr",
+        "bank_reference",
+        "bank_ref_no",
+        "rrn",
+        "bankrefno",
+        "utrno",
+        "txn_id",
+        "reference_id",
     )
     if utr:
         utr = str(utr).strip()
 
     bank_ref = (
-        payload.get("bank_reference")
-        or payload.get("bank_ref_no")
-        or payload.get("BankRefNo")
+        get_first(
+            "bank_reference",
+            "bank_ref_no",
+            "bankrefno",
+            "rrn",
+        )
         or utr
     )
     if bank_ref:
@@ -324,28 +449,20 @@ def parse_smart_collect_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
     # Mode / Type
     mode = (
-        payload.get("payment_mode")
-        or payload.get("mode")
-        or payload.get("TransferType")
+        get_first(
+            "payment_mode",
+            "mode",
+            "transfertype",
+            "transfer_type",
+            "txntype",
+        )
         or "smart_collect"
     )
 
     # Remitter / Payer info
-    payer_name = (
-        payload.get("remitter_name")
-        or payload.get("payer_name")
-        or payload.get("RemitterName")
-    )
-    payer_account = (
-        payload.get("remitter_account")
-        or payload.get("payer_account")
-        or payload.get("RemitterAccount")
-    )
-    payer_ifsc = (
-        payload.get("remitter_ifsc")
-        or payload.get("payer_ifsc")
-        or payload.get("RemitterIFSC")
-    )
+    payer_name = get_first("remitter_name", "payer_name", "remittername", "payername")
+    payer_account = get_first("remitter_account", "payer_account", "remitteraccount", "remitteraccno")
+    payer_ifsc = get_first("remitter_ifsc", "payer_ifsc", "remitterifsc", "remitterbank")
 
     return {
         "virtual_account_number": van,
@@ -368,6 +485,14 @@ def process_smart_collect_webhook(
     background_tasks: Any = None,
 ) -> dict[str, Any]:
     """High-security, fully idempotent Smart Collect webhook processing engine."""
+    # 0. Global Feature Flag Check
+    if not settings.smart_collect_enabled:
+        logger.warning("Smart Collect webhook received but feature is disabled in configuration.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Smart Collect is currently disabled",
+        )
+
     # 1. IP Whitelisting Validation
     whitelisted_ips = settings.smart_collect_whitelisted_ips
     if whitelisted_ips and not verify_client_ip(client_ip, whitelisted_ips):
@@ -385,21 +510,21 @@ def process_smart_collect_webhook(
             detail="Webhook timestamp has expired or is invalid",
         )
 
-    # 3. Cryptographic Signature / Secret Verification
-    provider_hint = payload.get("bank_provider") or payload.get("bank")
-    if not verify_webhook_signature(headers, raw_body, bank_provider=provider_hint):
-        logger.warning("Smart Collect webhook signature or secret verification failed.")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid webhook signature or secret token",
-        )
-
-    # 4. Extract and Validate Required Payment Data
+    # 3. Extract and Validate Required Payment Data
     parsed = parse_smart_collect_payload(payload)
     van = parsed["virtual_account_number"]
     amount = parsed["amount"]
     utr = parsed["utr_number"]
     bank_ref = parsed["bank_reference"]
+
+    # 4. Cryptographic Signature / Secret Verification
+    provider_hint = payload.get("bank_provider") or payload.get("bank")
+    if not verify_webhook_signature(headers, raw_body, bank_provider=provider_hint, van=van):
+        logger.warning("Smart Collect webhook signature or secret verification failed.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook signature or secret token",
+        )
 
     if not van:
         raise HTTPException(
@@ -418,7 +543,6 @@ def process_smart_collect_webhook(
         )
 
     # 5. Replay Attack & Idempotency Check
-    # If the bank retries the same webhook, return HTTP 200 without double-crediting
     existing_payment_stmt = (
         select(Payment)
         .where(
@@ -440,11 +564,15 @@ def process_smart_collect_webhook(
             "status": "already_processed",
             "message": "Transaction already recorded and reconciled",
             "payment_id": existing_payment.id,
+            "invoice_id": existing_payment.invoice_id,
+            "amount": float(existing_payment.amount),
             "utr_number": utr,
+            "tenancy_id": existing_payment.tenancy_id,
+            "payment_ids": [existing_payment.id],
+            "settled_invoice_ids": [existing_payment.invoice_id] if existing_payment.invoice_id else [],
         }
 
     # 6. Tenancy Resolution
-    # Match Tenancy by virtual_account_number
     tenancy_stmt = (
         select(Tenancy)
         .where(
@@ -456,7 +584,6 @@ def process_smart_collect_webhook(
     tenancy = db.scalar(tenancy_stmt)
 
     if tenancy is None:
-        # Fallback to Tenant-level virtual account
         tenant = db.scalar(
             select(Tenant).where(
                 Tenant.virtual_account_number == van,
@@ -481,9 +608,8 @@ def process_smart_collect_webhook(
             detail=f"No tenancy found matching virtual account {van}",
         )
 
-    # 7. Invoice Matching & Reconciliation Engine
+    # 7. Invoice Matching & Multi-Invoice Reconciliation Engine (FIFO)
     payment_service = PaymentService(db)
-    # Search for pending, partial, or overdue invoices for this tenancy (FIFO order)
     open_invoices_stmt = (
         select(Invoice)
         .where(
@@ -491,86 +617,148 @@ def process_smart_collect_webhook(
             Invoice.status.in_(["pending", "partial", "overdue"]),
             Invoice.deleted_at.is_(None),
         )
-        .order_by(Invoice.due_date.asc())
+        .order_by(Invoice.due_date.asc(), Invoice.id.asc())
     )
-    open_invoice = db.scalar(open_invoices_stmt)
+    open_invoices = list(db.scalars(open_invoices_stmt))
 
-    matched_invoice_id = None
-    if open_invoice is not None:
-        matched_invoice_id = open_invoice.id
-        outstanding = payment_service._outstanding_amount(open_invoice)
-        if amount >= outstanding:
-            open_invoice.status = "paid"
-        else:
-            open_invoice.status = "partial"
+    remaining_amount = amount
+    settled_invoices: list[Invoice] = []
+    created_payments: list[Payment] = []
 
-    # 8. Record Payment
-    payment = Payment(
-        invoice_id=matched_invoice_id,
-        tenancy_id=tenancy.id,
-        amount=amount,
-        payment_type="rent",
-        mode="smart_collect",
-        status="captured",
-        utr_number=utr,
-        virtual_account_number=van,
-        bank_reference=bank_ref,
-        raw_webhook_payload=payload,
-        paid_at=utc_now(),
-        submitted_at=utc_now(),
-        verified_at=utc_now(),
-    )
-    db.add(payment)
-    db.flush()
+    for inv in open_invoices:
+        if remaining_amount <= Decimal("0.00"):
+            break
+        outstanding = payment_service._outstanding_amount(inv)
+        if outstanding <= Decimal("0.00"):
+            inv.status = "paid"
+            continue
 
-    # 9. Create Ledger Entry
-    transfer_type = (parsed.get("mode") or "smart_collect").upper()
-    description = f"Smart Collect ({tenancy.bank_provider or 'BANK'}) direct transfer via {transfer_type}. UTR: {utr}"
-    db.add(
-        LedgerEntry(
+        alloc = min(remaining_amount, outstanding)
+        pay = Payment(
+            invoice_id=inv.id,
             tenancy_id=tenancy.id,
-            payment_id=payment.id,
-            entry_type="rent",
-            direction="credit",
-            amount=amount,
-            occurred_on=utc_now().date(),
-            description=description,
+            amount=alloc,
+            payment_type="rent",
+            mode="smart_collect",
+            status="captured",
+            utr_number=utr,
+            virtual_account_number=van,
+            bank_reference=bank_ref,
+            raw_webhook_payload=payload,
+            paid_at=utc_now(),
+            submitted_at=utc_now(),
+            verified_at=utc_now(),
         )
-    )
+        db.add(pay)
+        db.flush()
+        created_payments.append(pay)
+
+        new_outstanding = outstanding - alloc
+        inv.status = "paid" if new_outstanding <= Decimal("0.00") else "partial"
+        settled_invoices.append(inv)
+        remaining_amount -= alloc
+
+    # 8. Unapplied advance credit if remaining amount > 0 or no open invoices existed
+    if remaining_amount > Decimal("0.00") or not created_payments:
+        advance_payment = Payment(
+            invoice_id=None,
+            tenancy_id=tenancy.id,
+            amount=remaining_amount if created_payments else amount,
+            payment_type="rent",
+            mode="smart_collect",
+            status="captured",
+            utr_number=utr,
+            virtual_account_number=van,
+            bank_reference=bank_ref,
+            raw_webhook_payload=payload,
+            paid_at=utc_now(),
+            submitted_at=utc_now(),
+            verified_at=utc_now(),
+        )
+        db.add(advance_payment)
+        db.flush()
+        created_payments.append(advance_payment)
+
+    # 9. Create Ledger Entries
+    transfer_type = (parsed.get("mode") or "smart_collect").upper()
+    for pay in created_payments:
+        inv_desc = f" for Invoice #{pay.invoice_id}" if pay.invoice_id else " (Unapplied Advance Credit)"
+        bank_label = tenancy.bank_provider or "BANK"
+        description = (
+            f"Smart Collect ({bank_label}) direct transfer via {transfer_type}{inv_desc}. UTR: {utr}"
+        )
+        db.add(
+            LedgerEntry(
+                tenancy_id=tenancy.id,
+                payment_id=pay.id,
+                entry_type="rent",
+                direction="credit",
+                amount=pay.amount,
+                occurred_on=utc_now().date(),
+                description=description,
+            )
+        )
 
     # 10. Audit Log
     AuditLogService(db).record(
         user_id=None,
         action="payment.smart_collect_captured",
         entity_type="payment",
-        entity_id=payment.id,
+        entity_id=created_payments[0].id,
         metadata={
             "van": van,
             "utr": utr,
-            "amount": str(amount),
-            "invoice_id": matched_invoice_id,
+            "total_amount": str(amount),
+            "payment_ids": [p.id for p in created_payments],
+            "invoice_ids": [i.id for i in settled_invoices],
             "tenancy_id": tenancy.id,
         },
     )
 
-    db.commit()
-    db.refresh(payment)
-
-    # 11. Dispatch notifications and issue PDF receipt
+    # Concurrency safe commit
     try:
-        if background_tasks is not None:
-            background_tasks.add_task(payment_service._issue_receipt, payment.id)
-        else:
-            payment_service._issue_receipt(payment.id)
-    except Exception:
-        logger.exception("Failed to dispatch receipt notification for payment %s", payment.id)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = db.scalar(existing_payment_stmt)
+        if existing is not None:
+            return {
+                "status": "already_processed",
+                "message": "Transaction already recorded and reconciled",
+                "payment_id": existing.id,
+                "invoice_id": existing.invoice_id,
+                "amount": float(existing.amount),
+                "utr_number": utr,
+                "tenancy_id": existing.tenancy_id,
+                "payment_ids": [existing.id],
+                "settled_invoice_ids": [existing.invoice_id] if existing.invoice_id else [],
+            }
+        raise
+
+    for pay in created_payments:
+        db.refresh(pay)
+
+    # 11. Dispatch notifications and issue receipts
+    for pay in created_payments:
+        try:
+            if background_tasks is not None:
+                background_tasks.add_task(payment_service._issue_receipt, pay.id)
+            else:
+                payment_service._issue_receipt(pay.id)
+        except Exception:
+            logger.exception("Failed to dispatch receipt notification for payment %s", pay.id)
+
+    primary_payment = created_payments[0]
+    primary_invoice_id = settled_invoices[0].id if settled_invoices else None
 
     return {
         "status": "success",
         "message": "Payment captured and reconciled successfully",
-        "payment_id": payment.id,
-        "invoice_id": matched_invoice_id,
-        "amount": float(payment.amount),
+        "payment_id": primary_payment.id,
+        "invoice_id": primary_invoice_id,
+        "amount": float(amount),
         "utr_number": utr,
         "tenancy_id": tenancy.id,
+        "payment_ids": [p.id for p in created_payments],
+        "settled_invoice_ids": [i.id for i in settled_invoices],
     }
