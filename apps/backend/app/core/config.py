@@ -49,6 +49,18 @@ class Settings(BaseSettings):
     late_fee_percent_per_day: Decimal = Decimal("1.0")
     invoice_generation_day: int = 1
 
+    # Smart Collect / Virtual Accounts CMS Settings
+    smart_collect_enabled: bool = True
+    smart_collect_provider: str = "bank_cms"
+    icici_cms_prefix: str = "KARMI"
+    icici_cms_ifsc: str = "ICIC0000104"
+    icici_cms_webhook_secret: str | None = None
+    hdfc_cms_prefix: str = "KARMH"
+    hdfc_cms_ifsc: str = "HDFC0000060"
+    hdfc_cms_webhook_secret: str | None = None
+    smart_collect_webhook_secret: str | None = None
+    smart_collect_whitelisted_ips: list[str] = Field(default_factory=list)
+
 
 @lru_cache
 def get_settings() -> Settings:

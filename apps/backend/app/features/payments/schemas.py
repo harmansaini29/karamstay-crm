@@ -23,6 +23,11 @@ class InvoiceResponse(BaseModel):
     status: str
     payment_upi_id: str | None = None
     property_name: str | None = None
+    virtual_account_number: str | None = None
+    virtual_ifsc: str | None = None
+    virtual_vpa: str | None = None
+    bank_provider: str | None = None
+    virtual_account_name: str | None = None
 
 
 class UpiSubmitRequest(BaseModel):
@@ -60,6 +65,23 @@ class PaymentResponse(BaseModel):
     verified_by_id: int | None
     verified_at: datetime | None
     rejection_reason: str | None
+    virtual_account_number: str | None = None
+    bank_reference: str | None = None
+
+
+class SmartCollectWebhookResponse(BaseModel):
+    status: str
+    message: str
+    payment_id: int | None = None
+    invoice_id: int | None = None
+    amount: float | None = None
+    utr_number: str | None = None
+    tenancy_id: int | None = None
+
+
+class SmartCollectBackfillResponse(BaseModel):
+    status: str
+    backfilled_count: int
 
 
 class LedgerEntryResponse(BaseModel):

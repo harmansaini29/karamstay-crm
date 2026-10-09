@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import AuditActorMixin, Base, SoftDeleteMixin, TimestampMixin
@@ -43,11 +43,16 @@ class Payment(TimestampMixin, SoftDeleteMixin, AuditActorMixin, Base):
     razorpay_payment_id: Mapped[str | None] = mapped_column(String(120), unique=True, nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    utr_number: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    utr_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     verified_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Smart Collect CMS Fields
+    virtual_account_number: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    bank_reference: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)
+    raw_webhook_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     invoice: Mapped[Invoice | None] = relationship(back_populates="payments")
 

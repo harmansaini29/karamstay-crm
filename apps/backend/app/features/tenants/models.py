@@ -26,6 +26,10 @@ class Tenant(TimestampMixin, SoftDeleteMixin, AuditActorMixin, Base):
     emergency_contact_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="active")
     owner_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    virtual_account_number: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    virtual_ifsc: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    virtual_vpa: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    bank_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     tenancies: Mapped[list["Tenancy"]] = relationship(back_populates="tenant")
     documents: Mapped[list["Document"]] = relationship(back_populates="tenant")
@@ -47,6 +51,10 @@ class Tenancy(TimestampMixin, SoftDeleteMixin, AuditActorMixin, Base):
     billing_day: Mapped[int] = mapped_column(nullable=False, default=1)
     status: Mapped[str] = mapped_column(String(24), index=True, nullable=False, default="active")
     bed_ids: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
+    virtual_account_number: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    virtual_ifsc: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    virtual_vpa: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    bank_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     tenant: Mapped[Tenant] = relationship(back_populates="tenancies")
     unit: Mapped["Unit"] = relationship(back_populates="tenancies")

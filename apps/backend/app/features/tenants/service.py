@@ -226,6 +226,11 @@ class TenantService:
         self.repository.add_tenancy(tenancy)
         self.db.flush()
 
+        from app.features.payments.smart_collect import assign_virtual_account_to_tenancy
+
+        assign_virtual_account_to_tenancy(self.db, tenancy)
+        self.db.flush()
+
         for bed in beds:
             bed.status = "occupied"
             bed.updated_by_id = current_user.id
@@ -432,6 +437,11 @@ class TenantService:
                 "status": "pending_assignment",
                 "bed_ids": None,
                 "unit": None,
+                "virtual_account_number": None,
+                "virtual_ifsc": None,
+                "virtual_vpa": None,
+                "bank_provider": None,
+                "virtual_account_name": None,
             }
         tenancy = self.repository.get_active_tenancy_for_tenant(tenant.id)
         if tenancy is None:
@@ -447,7 +457,20 @@ class TenantService:
                 "status": "pending_assignment",
                 "bed_ids": None,
                 "unit": None,
+                "virtual_account_number": None,
+                "virtual_ifsc": None,
+                "virtual_vpa": None,
+                "bank_provider": None,
+                "virtual_account_name": None,
             }
+
+        if not tenancy.virtual_account_number:
+            from app.features.payments.smart_collect import assign_virtual_account_to_tenancy
+
+            assign_virtual_account_to_tenancy(self.db, tenancy)
+            self.db.commit()
+            self.db.refresh(tenancy)
+
         unit = self.property_repository.get_unit(tenancy.unit_id)
         unit_ctx = None
         if unit is not None:
@@ -492,6 +515,11 @@ class TenantService:
             "bed_ids": tenancy.bed_ids,
             "bed_labels": bed_labels,
             "unit": unit_ctx,
+            "virtual_account_number": tenancy.virtual_account_number,
+            "virtual_ifsc": tenancy.virtual_ifsc,
+            "virtual_vpa": tenancy.virtual_vpa,
+            "bank_provider": tenancy.bank_provider,
+            "virtual_account_name": f"KaramStay - {tenant.name}",
         }
 
     def checkout(

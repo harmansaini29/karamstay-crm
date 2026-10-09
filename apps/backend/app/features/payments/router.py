@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,9 +18,12 @@ from app.features.payments.schemas import (
     LedgerEntryResponse,
     PaymentResponse,
     PaymentVerifyRequest,
+    SmartCollectBackfillResponse,
+    SmartCollectWebhookResponse,
     UpiSubmitRequest,
 )
 from app.features.payments.service import PaymentService
+from app.features.payments.smart_collect import backfill_virtual_accounts, process_smart_collect_webhook
 
 router = APIRouter()
 AnyUser = Annotated[User, Depends(require_roles(["owner", "manager", "accountant", "tenant"]))]
@@ -67,6 +70,34 @@ def _to_invoice_response(inv: Invoice, db: Session | None = None) -> InvoiceResp
         res.property_name = prop.name
     elif not res.payment_upi_id:
         res.payment_upi_id = get_configured_upi_for_property()
+
+    # Smart Collect Virtual Account details
+    tenancy = getattr(inv, "tenancy", None)
+    if tenancy is None and db is not None:
+        try:
+            from app.features.tenants.models import Tenancy
+
+            tenancy = db.scalar(select(Tenancy).where(Tenancy.id == inv.tenancy_id))
+        except Exception:
+            tenancy = None
+
+    if tenancy is not None:
+        if not tenancy.virtual_account_number and db is not None:
+            try:
+                from app.features.payments.smart_collect import assign_virtual_account_to_tenancy
+
+                assign_virtual_account_to_tenancy(db, tenancy)
+                db.commit()
+                db.refresh(tenancy)
+            except Exception:
+                pass
+        res.virtual_account_number = tenancy.virtual_account_number
+        res.virtual_ifsc = tenancy.virtual_ifsc
+        res.virtual_vpa = tenancy.virtual_vpa
+        res.bank_provider = tenancy.bank_provider
+        tenant_name = tenancy.tenant.name if getattr(tenancy, "tenant", None) else None
+        res.virtual_account_name = f"KaramStay - {tenant_name}" if tenant_name else "KaramStay"
+
     return res
 
 
@@ -137,3 +168,53 @@ def list_expenses(
 @router.post("/expenses", response_model=ExpenseResponse, status_code=status.HTTP_201_CREATED)
 def create_expense(payload: ExpenseCreate, current_user: FinanceUser, db: DbSession) -> ExpenseResponse:
     return PaymentService(db).create_expense(payload, current_user)
+
+
+@router.post(
+    "/payments/webhook/smart-collect",
+    response_model=SmartCollectWebhookResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def smart_collect_webhook(
+    request: Request,
+    db: DbSession,
+    background_tasks: BackgroundTasks,
+) -> SmartCollectWebhookResponse:
+    raw_body = await request.body()
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON payload in webhook body",
+        ) from None
+
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    else:
+        client_ip = request.client.host if request.client else None
+
+    result = process_smart_collect_webhook(
+        db=db,
+        payload=payload,
+        raw_body=raw_body,
+        headers=request.headers,
+        client_ip=client_ip,
+        background_tasks=background_tasks,
+    )
+    return SmartCollectWebhookResponse(**result)
+
+
+@router.post(
+    "/payments/smart-collect/backfill",
+    response_model=SmartCollectBackfillResponse,
+    status_code=status.HTTP_200_OK,
+)
+def backfill_smart_collect(
+    current_user: FinanceUser,
+    db: DbSession,
+) -> SmartCollectBackfillResponse:
+    count = backfill_virtual_accounts(db)
+    return SmartCollectBackfillResponse(status="success", backfilled_count=count)
+

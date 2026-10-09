@@ -139,6 +139,11 @@ class TenancyResponse(BaseModel):
     billing_day: int
     status: str
     bed_ids: list[int] | None
+    virtual_account_number: str | None = None
+    virtual_ifsc: str | None = None
+    virtual_vpa: str | None = None
+    bank_provider: str | None = None
+    virtual_account_name: str | None = None
 
 
 class TenancyUnitContext(BaseModel):
@@ -168,6 +173,11 @@ class TenancyContextResponse(BaseModel):
     bed_ids: list[int] | None = None
     bed_labels: list[str] | None = None
     unit: TenancyUnitContext | None = None
+    virtual_account_number: str | None = None
+    virtual_ifsc: str | None = None
+    virtual_vpa: str | None = None
+    bank_provider: str | None = None
+    virtual_account_name: str | None = None
 
 
 class DamageCharge(BaseModel):
