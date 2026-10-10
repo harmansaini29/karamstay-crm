@@ -3,6 +3,20 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class BankAccountResponse(BaseModel):
+    key: str
+    name: str
+    bank_name: str
+    van_prefix: str
+    ifsc: str
+    upi_handle_template: str
+    webhook_url: str = "/api/v1/payments/webhook/smart-collect"
+    is_active: bool
+    status: str
+    description: str = ""
+    is_default: bool = False
+
+
 class PropertyCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     address: str = Field(min_length=5)
@@ -11,6 +25,7 @@ class PropertyCreate(BaseModel):
     state: str | None = Field(default=None, max_length=80)
     pincode: str | None = Field(default=None, max_length=16)
     payment_upi_id: str | None = Field(default=None, max_length=120)
+    bank_account_key: str | None = Field(default="hdfc_1", max_length=32)
 
 
 class PropertyUpdate(BaseModel):
@@ -21,6 +36,7 @@ class PropertyUpdate(BaseModel):
     state: str | None = Field(default=None, max_length=80)
     pincode: str | None = Field(default=None, max_length=16)
     payment_upi_id: str | None = Field(default=None, max_length=120)
+    bank_account_key: str | None = Field(default=None, max_length=32)
     is_active: bool | None = None
 
 
@@ -36,7 +52,15 @@ class PropertyResponse(BaseModel):
     state: str | None
     pincode: str | None
     payment_upi_id: str | None = None
+    bank_account_key: str | None = "hdfc_1"
+    bank_provider: str | None = None
     is_active: bool
+
+    @model_validator(mode="after")
+    def resolve_bank_account_fields(self) -> "PropertyResponse":
+        if not self.bank_account_key:
+            self.bank_account_key = self.bank_provider or "hdfc_1"
+        return self
 
 
 class UnitCreate(BaseModel):

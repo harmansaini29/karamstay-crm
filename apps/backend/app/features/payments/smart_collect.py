@@ -14,6 +14,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLogService
+from app.core.bank_accounts import (
+    get_all_candidate_webhook_secrets,
+    get_bank_account,
+    resolve_bank_account_for_van,
+)
 from app.core.config import settings
 from app.core.security import utc_now
 from app.features.payments.models import Invoice, LedgerEntry, Payment
@@ -28,24 +33,44 @@ def resolve_bank_provider(
     provider_hint: str | None = None,
     van: str | None = None,
 ) -> str:
-    """Normalize bank provider to either 'icici' or 'hdfc'.
+    """Normalize bank provider / account key.
 
     Deduces provider from explicit hint, VAN prefix, or system config.
+    Supports multi-account keys: 'hdfc_1', 'hdfc_2', 'nkgsb_1' as well as
+    legacy 'hdfc' and 'icici'.
     """
-    if provider_hint:
-        hint_lower = provider_hint.strip().lower()
-        if "hdfc" in hint_lower:
-            return "hdfc"
-        if "icici" in hint_lower:
-            return "icici"
-
     if van:
+        acc = resolve_bank_account_for_van(van)
+        if acc:
+            return acc.key
         van_upper = van.strip().upper()
+        if van_upper.startswith("KARMH1"):
+            return "hdfc_1"
+        if van_upper.startswith("KARMH2"):
+            return "hdfc_2"
+        if van_upper.startswith("KARMN1"):
+            return "nkgsb_1"
         hdfc_prefix = (settings.hdfc_cms_prefix or "KARMH").strip().upper()
         icici_prefix = (settings.icici_cms_prefix or "KARMI").strip().upper()
         if van_upper.startswith(hdfc_prefix):
             return "hdfc"
         if van_upper.startswith(icici_prefix):
+            return "icici"
+
+    if provider_hint:
+        hint_lower = provider_hint.strip().lower()
+        if hint_lower in ("hdfc_1", "hdfc1", "hdfc-1"):
+            return "hdfc_1"
+        if hint_lower in ("hdfc_2", "hdfc2", "hdfc-2"):
+            return "hdfc_2"
+        if "nkgsb" in hint_lower:
+            return "nkgsb_1"
+        acc = get_bank_account(provider_hint)
+        if acc:
+            return acc.key
+        if "hdfc" in hint_lower:
+            return "hdfc"
+        if "icici" in hint_lower:
             return "icici"
 
     raw = (settings.smart_collect_provider or "icici").strip().lower()
@@ -60,23 +85,55 @@ def generate_virtual_account(
 ) -> dict[str, str]:
     """Deterministically allocates collision-free Virtual Account Number & VPA
 
-    based on the assigned bank provider (ICICI or HDFC).
+    based on the assigned bank account (HDFC 1, HDFC 2, NKGSB, or legacy HDFC/ICICI).
     Example for tenancy 501:
-      ICICI: Account KARMI000501, IFSC ICIC0000104, VPA karmi000501@icici
-      HDFC:  Account KARMH000501, IFSC HDFC0000060, VPA karmh000501@hdfcbank
+      HDFC 1: Account KARMH1000501, IFSC HDFC0000060, VPA karmh1000501@hdfcbank
+      HDFC 2: Account KARMH2000501, IFSC HDFC0000060, VPA karmh2000501@hdfcbank
+      NKGSB:  Account KARMN1000501, IFSC NKGS0000001, VPA karmn1000501@nkgsb
+      ICICI:  Account KARMI000501,  IFSC ICIC0000104, VPA karmi000501@icici
+      HDFC:   Account KARMH000501,  IFSC HDFC0000060, VPA karmh000501@hdfcbank
     """
     provider = resolve_bank_provider(bank_provider)
 
-    if provider == "hdfc":
+    if provider == "hdfc_1":
+        prefix = "KARMH1"
+        ifsc = "HDFC0000060"
+        account_number = f"{prefix}{tenancy_id:06d}"
+        vpa = f"{account_number.lower()}@hdfcbank"
+    elif provider == "hdfc_2":
+        prefix = "KARMH2"
+        ifsc = "HDFC0000060"
+        account_number = f"{prefix}{tenancy_id:06d}"
+        vpa = f"{account_number.lower()}@hdfcbank"
+    elif provider in ("nkgsb_1", "nkgsb"):
+        prefix = "KARMN1"
+        ifsc = "NKGS0000001"
+        account_number = f"{prefix}{tenancy_id:06d}"
+        vpa = f"{account_number.lower()}@nkgsb"
+        provider = "nkgsb_1"
+    elif provider == "hdfc":
         prefix = (settings.hdfc_cms_prefix or "KARMH").strip().upper()
         ifsc = (settings.hdfc_cms_ifsc or "HDFC0000060").strip().upper()
         account_number = f"{prefix}{tenancy_id:06d}"
         vpa = f"{account_number.lower()}@hdfcbank"
-    else:
+    elif provider == "icici":
         prefix = (settings.icici_cms_prefix or "KARMI").strip().upper()
         ifsc = (settings.icici_cms_ifsc or "ICIC0000104").strip().upper()
         account_number = f"{prefix}{tenancy_id:06d}"
         vpa = f"{account_number.lower()}@icici"
+    else:
+        acc = get_bank_account(provider)
+        if acc:
+            prefix = acc.van_prefix.upper()
+            ifsc = acc.ifsc.upper()
+            account_number = f"{prefix}{tenancy_id:06d}"
+            vpa = acc.upi_handle_template.replace("{van}", account_number.lower())
+        else:
+            prefix = "KARMH1"
+            ifsc = "HDFC0000060"
+            account_number = f"{prefix}{tenancy_id:06d}"
+            vpa = f"{account_number.lower()}@hdfcbank"
+            provider = "hdfc_1"
 
     return {
         "virtual_account_number": account_number,
@@ -88,7 +145,7 @@ def generate_virtual_account(
 
 def assign_virtual_account_to_tenancy(db: Session, tenancy: Tenancy) -> Tenancy:
     """Ensure tenancy has a virtual account assigned based on its property provider."""
-    # Look up property bank_provider if available
+    # Look up property bank_account_key / bank_provider if available
     provider = None
     if tenancy.unit_id:
         prop = db.scalar(
@@ -96,8 +153,8 @@ def assign_virtual_account_to_tenancy(db: Session, tenancy: Tenancy) -> Tenancy:
             .join(Unit, Unit.property_id == Property.id)
             .where(Unit.id == tenancy.unit_id)
         )
-        if prop and prop.bank_provider:
-            provider = prop.bank_provider
+        if prop:
+            provider = prop.bank_account_key or prop.bank_provider
 
     va_data = generate_virtual_account(tenancy.id, bank_provider=provider)
     tenancy.virtual_account_number = va_data["virtual_account_number"]
@@ -185,21 +242,8 @@ def verify_webhook_signature(
     """
     provider = resolve_bank_provider(bank_provider, van=van)
 
-    # Build candidate secret list with primary provider prioritized
-    candidate_secrets: list[str] = []
-    if provider == "hdfc":
-        if settings.hdfc_cms_webhook_secret:
-            candidate_secrets.append(settings.hdfc_cms_webhook_secret)
-        if settings.icici_cms_webhook_secret:
-            candidate_secrets.append(settings.icici_cms_webhook_secret)
-    else:
-        if settings.icici_cms_webhook_secret:
-            candidate_secrets.append(settings.icici_cms_webhook_secret)
-        if settings.hdfc_cms_webhook_secret:
-            candidate_secrets.append(settings.hdfc_cms_webhook_secret)
-
-    if settings.smart_collect_webhook_secret and settings.smart_collect_webhook_secret not in candidate_secrets:
-        candidate_secrets.append(settings.smart_collect_webhook_secret)
+    # Candidate secrets across bank accounts registry and settings (priority provider at index 0)
+    candidate_secrets: list[str] = get_all_candidate_webhook_secrets(priority_key=provider)
 
     # If secret is unset across the board, allow in local development only
     if not candidate_secrets:
@@ -517,8 +561,28 @@ def process_smart_collect_webhook(
     utr = parsed["utr_number"]
     bank_ref = parsed["bank_reference"]
 
+    # Bank Account Resolution & Service Kill-Switch Check
+    provider_hint = (
+        payload.get("bank_account_key")
+        or payload.get("bank_provider")
+        or payload.get("bank")
+    )
+    account = resolve_bank_account_for_van(van) or (
+        get_bank_account(provider_hint) if provider_hint else None
+    )
+    if account and not account.is_active:
+        bank_label = account.name or account.bank_name
+        logger.warning(
+            "Smart Collect webhook rejected: service paused for bank account '%s' (%s).",
+            account.key,
+            bank_label,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Bank account collection service is paused for {bank_label}",
+        )
+
     # 4. Cryptographic Signature / Secret Verification
-    provider_hint = payload.get("bank_provider") or payload.get("bank")
     if not verify_webhook_signature(headers, raw_body, bank_provider=provider_hint, van=van):
         logger.warning("Smart Collect webhook signature or secret verification failed.")
         raise HTTPException(

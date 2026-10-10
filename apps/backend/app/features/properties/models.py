@@ -34,6 +34,7 @@ class Property(TimestampMixin, SoftDeleteMixin, AuditActorMixin, Base):
     pincode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     payment_upi_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     bank_provider: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
+    bank_account_key: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     units: Mapped[list["Unit"]] = relationship(back_populates="property")

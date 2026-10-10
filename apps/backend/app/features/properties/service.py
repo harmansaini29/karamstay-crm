@@ -45,6 +45,7 @@ class PropertyService:
             allow_default=False,
         )
         payment_upi_id = explicit_upi or payload.payment_upi_id or get_configured_upi_for_property()
+        bank_account_key = payload.bank_account_key or "hdfc_1"
         property = Property(
             owner_id=current_user.id,
             name=payload.name,
@@ -54,6 +55,8 @@ class PropertyService:
             state=payload.state,
             pincode=payload.pincode,
             payment_upi_id=payment_upi_id,
+            bank_account_key=bank_account_key,
+            bank_provider=bank_account_key,
             created_by_id=current_user.id,
             updated_by_id=current_user.id,
         )
@@ -109,6 +112,8 @@ class PropertyService:
         update_data.pop("payment_upi_id", None)
         for field, value in update_data.items():
             setattr(property, field, value)
+        if "bank_account_key" in update_data:
+            property.bank_provider = update_data["bank_account_key"]
         # Re-sync authoritative in-code UPI ID if explicitly configured; otherwise retain existing
         explicit_upi = get_configured_upi_for_property(
             property_name=property.name,

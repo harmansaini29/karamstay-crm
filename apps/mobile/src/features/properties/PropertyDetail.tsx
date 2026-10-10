@@ -23,6 +23,9 @@ interface Property {
   city: string;
   state: string;
   pincode: string;
+  payment_upi_id?: string;
+  bank_account_key?: string;
+  bank_provider?: string;
   is_active: boolean;
   latitude?: number;
   longitude?: number;
@@ -182,6 +185,19 @@ export const PropertyDetail: React.FC<{ route: any; navigation: any }> = ({ rout
               <Text style={{ color: colors.textMuted, fontSize: font.caption.fontSize, marginTop: space.sm }}>
                 {property.address}, {property.city}, {property.state} - {property.pincode}
               </Text>
+              {property.bank_account_key ? (
+                <View style={{ marginTop: space.sm, flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="business-outline" size={14} color={colors.primary} style={{ marginRight: 4 }} />
+                  <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>
+                    Settlement Bank: {
+                      property.bank_account_key === 'hdfc_1' ? 'HDFC Bank Account 1 (KARMH1)' :
+                      property.bank_account_key === 'hdfc_2' ? 'HDFC Bank Account 2 (KARMH2)' :
+                      property.bank_account_key === 'nkgsb_1' ? 'NKGSB Co-op Bank (KARMN1)' :
+                      property.bank_account_key.toUpperCase()
+                    }
+                  </Text>
+                </View>
+              ) : null}
             </Card>
 
             {/* Map Preview Card */}

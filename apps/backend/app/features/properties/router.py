@@ -3,10 +3,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.bank_accounts import list_bank_accounts
 from app.db.session import get_db
 from app.features.auth.dependencies import require_roles
 from app.features.auth.models import User
 from app.features.properties.schemas import (
+    BankAccountResponse,
     BedAssign,
     BedResponse,
     BedVacate,
@@ -23,12 +25,37 @@ router = APIRouter()
 OwnerUser = Annotated[User, Depends(require_roles(["owner"]))]
 OwnerManagerUser = Annotated[User, Depends(require_roles(["owner", "manager"]))]
 OwnerManagerStaffUser = Annotated[User, Depends(require_roles(["owner", "manager", "staff"]))]
+AuthenticatedUser = Annotated[User, Depends(require_roles(["owner", "manager", "staff", "accountant", "tenant"]))]
 DbSession = Annotated[Session, Depends(get_db)]
 
 
 @router.get("/properties", response_model=list[PropertyResponse])
 def list_properties(current_user: OwnerManagerStaffUser, db: DbSession) -> list[PropertyResponse]:
     return PropertyService(db).list_properties(current_user)
+
+
+@router.get("/properties/bank-accounts", response_model=list[BankAccountResponse])
+def list_property_bank_accounts(
+    current_user: AuthenticatedUser,
+) -> list[BankAccountResponse]:
+    """Return active bank accounts for property linked bank account selection."""
+    accounts = list_bank_accounts(active_only=True, include_legacy=False)
+    return [
+        BankAccountResponse(
+            key=acc.key,
+            name=acc.name,
+            bank_name=acc.bank_name,
+            van_prefix=acc.van_prefix,
+            ifsc=acc.ifsc,
+            upi_handle_template=acc.upi_handle_template,
+            webhook_url=acc.webhook_url,
+            is_active=acc.is_active,
+            status=acc.status,
+            description=acc.description,
+            is_default=acc.is_default,
+        )
+        for acc in accounts
+    ]
 
 
 @router.post("/properties", response_model=PropertyResponse, status_code=status.HTTP_201_CREATED)

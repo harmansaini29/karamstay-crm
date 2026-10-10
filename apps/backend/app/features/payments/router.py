@@ -226,3 +226,14 @@ def backfill_smart_collect(
     count = backfill_virtual_accounts(db)
     return SmartCollectBackfillResponse(status="success", backfilled_count=count)
 
+
+@router.get("/payments/bank-accounts")
+def list_payment_bank_accounts(
+    current_user: AnyUser,
+) -> list[dict]:
+    """Return active bank accounts for payments and virtual account routing."""
+    from app.core.bank_accounts import list_bank_accounts
+
+    accounts = list_bank_accounts(active_only=True, include_legacy=False)
+    return [acc.to_dict() for acc in accounts]
+

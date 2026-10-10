@@ -34,6 +34,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
   const [state, setState] = useState('');
   const [pincode, setPincode] = useState('');
   const [paymentUpiId, setPaymentUpiId] = useState('');
+  const [bankAccountKey, setBankAccountKey] = useState('hdfc_1');
   const [isActive, setIsActive] = useState('true');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
@@ -50,6 +51,31 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
     setToastType(type);
     setToastVisible(true);
   };
+
+  // Fetch active bank accounts for linked settlement selection
+  const { data: bankAccountsData } = useQuery({
+    queryKey: ['property-bank-accounts'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/properties/bank-accounts');
+        return res.data;
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  const bankAccountOptions =
+    bankAccountsData && Array.isArray(bankAccountsData) && bankAccountsData.length > 0
+      ? bankAccountsData.map((b: any) => ({
+          label: `${b.name} (${b.van_prefix})`,
+          value: b.key,
+        }))
+      : [
+          { label: 'HDFC Bank - Current Account 1 (KARMH1)', value: 'hdfc_1' },
+          { label: 'HDFC Bank - Current Account 2 (KARMH2)', value: 'hdfc_2' },
+          { label: 'NKGSB Co-op Bank - Current Account (KARMN1)', value: 'nkgsb_1' },
+        ];
 
   // Fetch properties details if in edit mode
   const { data: property, isLoading: isFetching } = useQuery({
@@ -70,6 +96,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
       setState(property.state || '');
       setPincode(property.pincode || '');
       setPaymentUpiId(property.payment_upi_id || '');
+      setBankAccountKey(property.bank_account_key || 'hdfc_1');
       setIsActive(String(property.is_active));
       setLatitude(property.latitude || null);
       setLongitude(property.longitude || null);
@@ -199,6 +226,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
       city: city.trim() || null,
       state: state.trim() || null,
       pincode: pincode.trim() || null,
+      bank_account_key: bankAccountKey,
       // Explicitly coerce to number or null — Android Hermes can pass state
       // variables as string "null" if they were initialised from route.params
       latitude: typeof latitude === 'number' ? latitude : null,
@@ -351,6 +379,18 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({ route, navigation })
             placeholder="e.g. 201301"
             keyboardType="numeric"
           />
+
+          <Input
+            label="Linked Bank Account (Rent Settlement)"
+            value={bankAccountKey}
+            onChangeText={setBankAccountKey}
+            type="select"
+            options={bankAccountOptions}
+            placeholder="Select bank account"
+          />
+          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: -space.xs, marginBottom: space.md, lineHeight: 16 }}>
+            All virtual accounts and UPI collections for flats in this property will route into this designated bank account.
+          </Text>
 
           <Input
             label="Property Payment GPay / UPI ID"
