@@ -506,3 +506,145 @@ def test_operator_kill_switch_rejects_webhook_with_503(client, db_session):
         assert res_resumed.json()["status"] == "success"
     finally:
         resume_all_accounts()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. Strict Multi-Account Isolation, Dynamic Updates & CLI Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_cross_bank_webhook_signature_rejection(client, db_session):
+    """Verify cryptographic isolation: NKGSB webhook signed with HDFC secret is REJECTED (401)."""
+    owner = create_user(db_session, role_name="owner", email="owner_cross_bank@example.com")
+    tenancy, invoice = _seed_tenancy_for_bank(db_session, owner.id, "nkgsb_1")
+
+    # NKGSB tenancy VAN:
+    assert tenancy.virtual_account_number.startswith("KARMN1")
+
+    # Deliberately sign using HDFC 1 secret!
+    hdfc_account = get_bank_account("hdfc_1")
+    wrong_secret = get_webhook_secret_for_account(hdfc_account)
+
+    payload = {
+        "virtual_account_number": tenancy.virtual_account_number,
+        "amount": "10000.00",
+        "utr_number": "UTR_CROSS_BANK_001",
+        "bank_reference": "REF_CROSS_BANK_001",
+        "timestamp": utc_now().isoformat(),
+    }
+    raw_body = json.dumps(payload).encode("utf-8")
+    forged_sig = _generate_hmac_header(raw_body, wrong_secret)
+
+    headers = {
+        "Content-Type": "application/json",
+        "x-webhook-signature": forged_sig,
+    }
+
+    res = client.post("/api/v1/payments/webhook/smart-collect", headers=headers, content=raw_body)
+    assert res.status_code == 401
+    assert "Invalid webhook signature or secret token" in (res.json().get("detail") or res.json().get("message") or "")
+
+    # Now verify with legitimate NKGSB secret: succeeds
+    nkgsb_account = get_bank_account("nkgsb_1")
+    legit_secret = get_webhook_secret_for_account(nkgsb_account)
+    legit_sig = _generate_hmac_header(raw_body, legit_secret)
+    legit_headers = {
+        "Content-Type": "application/json",
+        "x-webhook-signature": legit_sig,
+    }
+    res_legit = client.post("/api/v1/payments/webhook/smart-collect", headers=legit_headers, content=raw_body)
+    assert res_legit.status_code == 200
+    assert res_legit.json()["status"] == "success"
+
+
+def test_property_api_rejects_invalid_bank_account_key(client, db_session):
+    """Verify that PropertyCreate and PropertyUpdate reject invalid or unrecognized bank_account_key."""
+    owner = create_user(db_session, role_name="owner", email="owner_invalid_bank@example.com")
+    headers = auth_headers(client, email=owner.email)
+
+    # 1. Reject invalid key on create
+    bad_payload = {
+        "name": "Invalid Bank Property",
+        "address": "Phase 2, Sector 55, Gurgaon",
+        "property_type": "apartment",
+        "bank_account_key": "unrecognized_bank_xyz",
+    }
+    res_create = client.post("/api/v1/properties", json=bad_payload, headers=headers)
+    assert res_create.status_code == 422
+    assert "Bank account 'unrecognized_bank_xyz' is not recognized" in str(res_create.json())
+
+    # 2. Accept valid key on create
+    valid_payload = {
+        "name": "Valid NKGSB Property",
+        "address": "Phase 2, Sector 55, Gurgaon",
+        "property_type": "apartment",
+        "bank_account_key": "nkgsb_1",
+    }
+    res_valid = client.post("/api/v1/properties", json=valid_payload, headers=headers)
+    assert res_valid.status_code == 201
+    prop_id = res_valid.json()["id"]
+    assert res_valid.json()["bank_account_key"] == "nkgsb_1"
+
+    # 3. Reject invalid key on update
+    res_update = client.patch(
+        f"/api/v1/properties/{prop_id}",
+        json={"bank_account_key": "fake_bank_123"},
+        headers=headers,
+    )
+    assert res_update.status_code == 422
+    assert "Bank account 'fake_bank_123' is not recognized" in str(res_update.json())
+
+
+def test_default_virtual_account_allocation_defaults_to_hdfc1():
+    """Verify that unconfigured / default virtual account generation resolves to hdfc_1, NOT ICICI."""
+    va = generate_virtual_account(501)
+    assert va["bank_provider"] == "hdfc_1"
+    assert va["bank_account_key"] == "hdfc_1"
+    assert va["virtual_account_number"] == "KARMH1000501"
+    assert va["virtual_ifsc"] == "HDFC0000060"
+    assert va["virtual_vpa"] == "karmh1000501@hdfcbank"
+
+
+def test_dynamic_in_code_registry_update_propagates_to_virtual_accounts():
+    """Verify that editing bank account config directly dynamically updates virtual account generation."""
+    account = get_bank_account("hdfc_1")
+    assert account is not None
+    original_ifsc = account.ifsc
+    try:
+        account.ifsc = "HDFC0009999"
+        va = generate_virtual_account(602, "hdfc_1")
+        assert va["virtual_ifsc"] == "HDFC0009999"
+        assert va["virtual_account_number"] == "KARMH1000602"
+    finally:
+        account.ifsc = original_ifsc
+
+
+def test_cli_execution_of_bank_accounts_and_manage_script():
+    """Verify that bank_accounts.py and manage_bank_accounts.py execute directly without shadowing errors."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    backend_dir = Path(__file__).resolve().parent.parent
+
+    # 1. Run manage_bank_accounts.py --status
+    proc1 = subprocess.run(
+        [sys.executable, "manage_bank_accounts.py", "--status"],
+        cwd=str(backend_dir),
+        capture_output=True,
+        text=True,
+    )
+    assert proc1.returncode == 0
+    assert "[ACTIVE] hdfc_1" in proc1.stdout
+    assert "[ACTIVE] hdfc_2" in proc1.stdout
+    assert "[ACTIVE] nkgsb_1" in proc1.stdout
+
+    # 2. Run app/core/bank_accounts.py --status directly
+    proc2 = subprocess.run(
+        [sys.executable, "app/core/bank_accounts.py", "--status"],
+        cwd=str(backend_dir),
+        capture_output=True,
+        text=True,
+    )
+    assert proc2.returncode == 0
+    assert "[ACTIVE] hdfc_1" in proc2.stdout
+

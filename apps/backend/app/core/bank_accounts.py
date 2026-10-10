@@ -33,9 +33,22 @@ HOW TO OPERATE THIS FILE:
 ================================================================================
 """
 
+import os
+import sys
+from pathlib import Path
+
+# If this file is executed directly (e.g. `python app/core/bank_accounts.py`),
+# prevent sys.path[0] from shadowing standard library logging with app/core/logging.py
+if __name__ == "__main__" or __name__ == "bank_accounts":
+    _core_dir = str(Path(__file__).resolve().parent)
+    _backend_dir = str(Path(__file__).resolve().parent.parent.parent)
+    if sys.path and sys.path[0] == _core_dir:
+        sys.path.pop(0)
+    if _backend_dir not in sys.path:
+        sys.path.insert(0, _backend_dir)
+
 import copy
 import logging
-import os
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -415,13 +428,11 @@ def format_virtual_account(
 # 5. Security & Cryptographic Webhook Secret Resolution
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_webhook_secret_for_account(account_or_key: BankAccountConfig | str) -> str | None:
-    """Resolve the authoritative cryptographic webhook secret for a bank account.
+def get_webhook_secrets_for_account(account_or_key: BankAccountConfig | str) -> list[str]:
+    """Resolve all valid cryptographic webhook secrets for a specific bank account.
 
-    Resolution order:
-      1. Environment variable specified in account.webhook_secret_env_var
-      2. App settings fallback (settings.hdfc_cms_webhook_secret, etc.)
-      3. Account default_webhook_secret defined in this file
+    Enforces strict account isolation: secrets from OTHER bank accounts (e.g. HDFC
+    secrets for an NKGSB account) are NEVER returned.
     """
     if isinstance(account_or_key, str):
         account = get_bank_account(account_or_key)
@@ -429,32 +440,51 @@ def get_webhook_secret_for_account(account_or_key: BankAccountConfig | str) -> s
         account = account_or_key
 
     if not account:
-        return None
+        return []
 
-    # 1. Check account-specific environment variable
+    secrets_list: list[str] = []
+
+    # 1. Account-specific environment variable (e.g. HDFC_1_WEBHOOK_SECRET, NKGSB_1_WEBHOOK_SECRET)
     if account.webhook_secret_env_var:
         env_val = os.getenv(account.webhook_secret_env_var)
-        if env_val and env_val.strip():
-            return env_val.strip()
+        if env_val and env_val.strip() and env_val.strip() not in secrets_list:
+            secrets_list.append(env_val.strip())
 
-    # 2. Check settings fallback if available
+    # 2. Account-specific settings override from app config
     try:
         from app.core.config import settings
 
         if account.key in ("hdfc_1", "hdfc") and settings.hdfc_cms_webhook_secret:
-            return settings.hdfc_cms_webhook_secret
+            if settings.hdfc_cms_webhook_secret not in secrets_list:
+                secrets_list.append(settings.hdfc_cms_webhook_secret)
         if account.key == "icici" and settings.icici_cms_webhook_secret:
-            return settings.icici_cms_webhook_secret
-        if settings.smart_collect_webhook_secret:
-            return settings.smart_collect_webhook_secret
+            if settings.icici_cms_webhook_secret not in secrets_list:
+                secrets_list.append(settings.icici_cms_webhook_secret)
     except Exception:
         pass
 
-    # 3. Default fallback secret
+    # 3. Authoritative default secret defined on account config
     if account.default_webhook_secret and account.default_webhook_secret.strip():
-        return account.default_webhook_secret.strip()
+        if account.default_webhook_secret.strip() not in secrets_list:
+            secrets_list.append(account.default_webhook_secret.strip())
 
-    return None
+    # 4. Global system webhook secret fallback (settings.smart_collect_webhook_secret)
+    try:
+        from app.core.config import settings
+
+        if settings.smart_collect_webhook_secret:
+            if settings.smart_collect_webhook_secret not in secrets_list:
+                secrets_list.append(settings.smart_collect_webhook_secret)
+    except Exception:
+        pass
+
+    return secrets_list
+
+
+def get_webhook_secret_for_account(account_or_key: BankAccountConfig | str) -> str | None:
+    """Resolve the primary authoritative cryptographic webhook secret for a bank account."""
+    secrets = get_webhook_secrets_for_account(account_or_key)
+    return secrets[0] if secrets else None
 
 
 def get_all_candidate_webhook_secrets(priority_key: str | None = None) -> list[str]:
@@ -493,3 +523,75 @@ def get_all_candidate_webhook_secrets(priority_key: str | None = None) -> list[s
         pass
 
     return candidates
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. Interactive Command-Line Operator Control Interface (CLI)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def print_accounts_table() -> None:
+    """Print human-readable operator table of all configured bank accounts."""
+    border = "=" * 80
+    print(border)
+    print("  KARAMSTAY MASTER BANK ACCOUNTS REGISTRY & OPERATOR CONTROL")
+    print(border)
+    for acc in BANK_ACCOUNTS_REGISTRY.values():
+        state = "[ONLINE - ACTIVE]" if acc.is_active else "[OFFLINE - PAUSED]"
+        default_tag = " (PRIMARY DEFAULT)" if acc.is_default else ""
+        print(f"\nAccount Key   : {acc.key}{default_tag}")
+        print(f"Name          : {acc.name}")
+        print(f"Bank Name     : {acc.bank_name}")
+        print(f"Account Number: {acc.account_number}")
+        print(f"Account Holder: {acc.account_holder_name}")
+        print(f"VAN Prefix    : {acc.van_prefix}")
+        print(f"IFSC Code     : {acc.ifsc}")
+        print(f"UPI Template  : {acc.upi_handle_template}")
+        print(f"Status        : {acc.status.upper()} -> {state}")
+        print(f"Webhook URL   : {acc.webhook_url}")
+        print(f"Secret Env Var: {acc.webhook_secret_env_var}")
+    print("\n" + border)
+
+
+def cli_main() -> None:
+    """Operator control CLI parser for adding, pausing, resuming, and checking accounts."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="KaramStay Bank Accounts Operator Control CLI"
+    )
+    parser.add_argument("--list", action="store_true", help="List all configured bank accounts")
+    parser.add_argument("--status", action="store_true", help="Show operational status of all accounts")
+    parser.add_argument("--pause", type=str, metavar="KEY", help="Pause collections for bank account (e.g. hdfc_1)")
+    parser.add_argument("--resume", type=str, metavar="KEY", help="Resume collections for bank account (e.g. hdfc_1)")
+    parser.add_argument("--pause-all", action="store_true", help="Global kill-switch: pause all bank accounts")
+    parser.add_argument("--resume-all", action="store_true", help="Resume all bank accounts")
+
+    args = parser.parse_args()
+
+    if args.pause:
+        if pause_bank_account(args.pause):
+            print(f"SUCCESS: Bank account '{args.pause}' collection service is now PAUSED.")
+        else:
+            print(f"ERROR: Bank account '{args.pause}' not found in registry.")
+    elif args.resume:
+        if resume_bank_account(args.resume):
+            print(f"SUCCESS: Bank account '{args.resume}' collection service is now RESUMED.")
+        else:
+            print(f"ERROR: Bank account '{args.resume}' not found in registry.")
+    elif args.pause_all:
+        pause_all_accounts()
+        print("ALERT: All bank account collection services have been PAUSED.")
+    elif args.resume_all:
+        resume_all_accounts()
+        print("SUCCESS: All bank account collection services have been RESUMED.")
+    elif args.status:
+        for key, acc in BANK_ACCOUNTS_REGISTRY.items():
+            state = "ACTIVE" if acc.is_active else "PAUSED"
+            print(f"[{state:6s}] {key:10s} - {acc.name} (Prefix: {acc.van_prefix}, IFSC: {acc.ifsc})")
+    else:
+        print_accounts_table()
+
+
+if __name__ == "__main__":
+    cli_main()
+

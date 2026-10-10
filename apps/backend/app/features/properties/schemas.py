@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class BankAccountResponse(BaseModel):
@@ -27,6 +27,21 @@ class PropertyCreate(BaseModel):
     payment_upi_id: str | None = Field(default=None, max_length=120)
     bank_account_key: str | None = Field(default="hdfc_1", max_length=32)
 
+    @field_validator("bank_account_key")
+    @classmethod
+    def validate_bank_account_key(cls, v: str | None) -> str | None:
+        if v is None:
+            return "hdfc_1"
+        from app.core.bank_accounts import get_bank_account
+
+        account = get_bank_account(v)
+        if not account:
+            raise ValueError(
+                f"Bank account '{v}' is not recognized. "
+                "Must be one of the registered bank accounts (e.g. 'hdfc_1', 'hdfc_2', 'nkgsb_1')."
+            )
+        return account.key
+
 
 class PropertyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
@@ -38,6 +53,21 @@ class PropertyUpdate(BaseModel):
     payment_upi_id: str | None = Field(default=None, max_length=120)
     bank_account_key: str | None = Field(default=None, max_length=32)
     is_active: bool | None = None
+
+    @field_validator("bank_account_key")
+    @classmethod
+    def validate_bank_account_key(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        from app.core.bank_accounts import get_bank_account
+
+        account = get_bank_account(v)
+        if not account:
+            raise ValueError(
+                f"Bank account '{v}' is not recognized. "
+                "Must be one of the registered bank accounts (e.g. 'hdfc_1', 'hdfc_2', 'nkgsb_1')."
+            )
+        return account.key
 
 
 class PropertyResponse(BaseModel):

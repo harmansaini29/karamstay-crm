@@ -17,6 +17,8 @@ from app.core.audit import AuditLogService
 from app.core.bank_accounts import (
     get_all_candidate_webhook_secrets,
     get_bank_account,
+    get_default_bank_account,
+    get_webhook_secrets_for_account,
     resolve_bank_account_for_van,
 )
 from app.core.config import settings
@@ -73,10 +75,22 @@ def resolve_bank_provider(
         if "icici" in hint_lower:
             return "icici"
 
-    raw = (settings.smart_collect_provider or "icici").strip().lower()
-    if "hdfc" in raw:
-        return "hdfc"
-    return "icici"
+    if (
+        settings.smart_collect_provider
+        and settings.smart_collect_provider.strip().lower() not in ("bank_cms", "")
+    ):
+        provider_setting = settings.smart_collect_provider.strip().lower()
+        acc = get_bank_account(provider_setting)
+        if acc:
+            return acc.key
+        if "hdfc" in provider_setting:
+            return "hdfc_1"
+        if "icici" in provider_setting:
+            return "icici"
+
+    # Default to the primary bank account (hdfc_1)
+    default_acc = get_default_bank_account()
+    return default_acc.key
 
 
 def generate_virtual_account(
@@ -86,60 +100,27 @@ def generate_virtual_account(
     """Deterministically allocates collision-free Virtual Account Number & VPA
 
     based on the assigned bank account (HDFC 1, HDFC 2, NKGSB, or legacy HDFC/ICICI).
+    All prefix, IFSC, and UPI templates are derived dynamically from
+    app.core.bank_accounts.BANK_ACCOUNTS_REGISTRY as the single authoritative source of truth.
     Example for tenancy 501:
       HDFC 1: Account KARMH1000501, IFSC HDFC0000060, VPA karmh1000501@hdfcbank
       HDFC 2: Account KARMH2000501, IFSC HDFC0000060, VPA karmh2000501@hdfcbank
       NKGSB:  Account KARMN1000501, IFSC NKGS0000001, VPA karmn1000501@nkgsb
-      ICICI:  Account KARMI000501,  IFSC ICIC0000104, VPA karmi000501@icici
-      HDFC:   Account KARMH000501,  IFSC HDFC0000060, VPA karmh000501@hdfcbank
     """
     provider = resolve_bank_provider(bank_provider)
+    account = get_bank_account(provider) or get_default_bank_account()
 
-    if provider == "hdfc_1":
-        prefix = "KARMH1"
-        ifsc = "HDFC0000060"
-        account_number = f"{prefix}{tenancy_id:06d}"
-        vpa = f"{account_number.lower()}@hdfcbank"
-    elif provider == "hdfc_2":
-        prefix = "KARMH2"
-        ifsc = "HDFC0000060"
-        account_number = f"{prefix}{tenancy_id:06d}"
-        vpa = f"{account_number.lower()}@hdfcbank"
-    elif provider in ("nkgsb_1", "nkgsb"):
-        prefix = "KARMN1"
-        ifsc = "NKGS0000001"
-        account_number = f"{prefix}{tenancy_id:06d}"
-        vpa = f"{account_number.lower()}@nkgsb"
-        provider = "nkgsb_1"
-    elif provider == "hdfc":
-        prefix = (settings.hdfc_cms_prefix or "KARMH").strip().upper()
-        ifsc = (settings.hdfc_cms_ifsc or "HDFC0000060").strip().upper()
-        account_number = f"{prefix}{tenancy_id:06d}"
-        vpa = f"{account_number.lower()}@hdfcbank"
-    elif provider == "icici":
-        prefix = (settings.icici_cms_prefix or "KARMI").strip().upper()
-        ifsc = (settings.icici_cms_ifsc or "ICIC0000104").strip().upper()
-        account_number = f"{prefix}{tenancy_id:06d}"
-        vpa = f"{account_number.lower()}@icici"
-    else:
-        acc = get_bank_account(provider)
-        if acc:
-            prefix = acc.van_prefix.upper()
-            ifsc = acc.ifsc.upper()
-            account_number = f"{prefix}{tenancy_id:06d}"
-            vpa = acc.upi_handle_template.replace("{van}", account_number.lower())
-        else:
-            prefix = "KARMH1"
-            ifsc = "HDFC0000060"
-            account_number = f"{prefix}{tenancy_id:06d}"
-            vpa = f"{account_number.lower()}@hdfcbank"
-            provider = "hdfc_1"
+    prefix = account.van_prefix.upper()
+    ifsc = account.ifsc.upper()
+    account_number = f"{prefix}{tenancy_id:06d}"
+    vpa = account.upi_handle_template.replace("{van}", account_number.lower())
 
     return {
         "virtual_account_number": account_number,
         "virtual_ifsc": ifsc,
         "virtual_vpa": vpa,
-        "bank_provider": provider,
+        "bank_provider": account.key,
+        "bank_account_key": account.key,
     }
 
 
@@ -237,13 +218,20 @@ def verify_webhook_signature(
 ) -> bool:
     """Verifies cryptographic HMAC-SHA256 signature or secret token in constant time.
 
-    Checks primary provider secret, and tests alternative configured bank secrets
-    if bank_provider is omitted or ambiguous in bank webhook payloads.
+    Enforces strict bank account isolation: if the webhook belongs to a resolved
+    bank account (from VAN prefix or provider hint), ONLY that bank account's
+    secret is accepted. Cross-bank secret forging is rejected.
     """
-    provider = resolve_bank_provider(bank_provider, van=van)
+    account = (
+        resolve_bank_account_for_van(van)
+        or (get_bank_account(bank_provider) if bank_provider else None)
+    )
 
-    # Candidate secrets across bank accounts registry and settings (priority provider at index 0)
-    candidate_secrets: list[str] = get_all_candidate_webhook_secrets(priority_key=provider)
+    if account:
+        candidate_secrets: list[str] = get_webhook_secrets_for_account(account)
+    else:
+        provider = resolve_bank_provider(bank_provider, van=van)
+        candidate_secrets = get_all_candidate_webhook_secrets(priority_key=provider)
 
     # If secret is unset across the board, allow in local development only
     if not candidate_secrets:
