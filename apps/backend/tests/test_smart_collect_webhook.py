@@ -796,3 +796,80 @@ def test_webhook_smart_collect_concurrent_identical_requests(client, db_session,
     )
     total_credited = sum(e.amount for e in ledger_entries)
     assert total_credited == Decimal("5000.00")
+
+
+def test_webhook_smart_collect_basic_auth_authentication(client, db_session, monkeypatch):
+    import base64
+
+    monkeypatch.setattr(settings, "smart_collect_webhook_secret", "smarthub_basic_pass")
+    monkeypatch.setattr(settings, "smart_collect_whitelisted_ips", [])
+
+    owner = create_user(db_session, role_name="owner", email="owner_basic@example.com")
+    tenancy = _seed_tenancy_with_van(db_session, owner.id)
+    invoice = _seed_invoice(db_session, tenancy, amount="7500.00")
+
+    payload = {
+        "virtual_account_number": tenancy.virtual_account_number,
+        "amount": "7500.00",
+        "utr_number": "UTR_BASIC_AUTH_001",
+    }
+    body = json.dumps(payload).encode("utf-8")
+
+    # Format: Basic base64(merchant_id:password)
+    auth_str = "merchant_user:smarthub_basic_pass"
+    b64_auth = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
+
+    response = client.post(
+        "/api/v1/payments/webhook/smart-collect",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Basic {b64_auth}",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert response.json()["invoice_id"] == invoice.id
+
+
+def test_webhook_smarthub_vyapar_nested_event_payload(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "smart_collect_webhook_secret", "smarthub_nested_secret")
+    monkeypatch.setattr(settings, "smart_collect_whitelisted_ips", [])
+
+    owner = create_user(db_session, role_name="owner", email="owner_nested@example.com")
+    tenancy = _seed_tenancy_with_van(db_session, owner.id)
+    invoice = _seed_invoice(db_session, tenancy, amount="9200.00")
+
+    # Real-world HDFC SmartHub Vyapar / SmartGateway nested event structure
+    payload = {
+        "event": "ORDER_SUCCEEDED",
+        "content": {
+            "order": {
+                "order_id": f"{tenancy.virtual_account_number}_1729881122",
+                "amount": 9200.00,
+                "status": "CHARGED",
+                "txn_id": "HDFC_TXN_SMARTHUB_001",
+                "bank_reference": "UTR_SMARTHUB_9988",
+                "metadata": {
+                    "virtual_account_id": tenancy.virtual_account_number,
+                },
+            }
+        },
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _generate_hmac_header(body, "smarthub_nested_secret")
+
+    response = client.post(
+        "/api/v1/payments/webhook/smart-collect",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Smarthub-Signature": sig,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["invoice_id"] == invoice.id
+    assert data["amount"] == 9200.0
+

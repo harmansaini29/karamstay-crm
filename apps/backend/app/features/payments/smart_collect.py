@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import hmac
 import ipaddress
@@ -247,6 +248,10 @@ def verify_webhook_signature(
         or header_lower.get("x-signature")
         or header_lower.get("x-bank-signature")
         or header_lower.get("x-hub-signature-256")
+        or header_lower.get("x-smarthub-signature")
+        or header_lower.get("x-smartgateway-signature")
+        or header_lower.get("x-hdfc-signature")
+        or header_lower.get("x-merchant-signature")
         or header_lower.get("signature")
     )
 
@@ -268,12 +273,26 @@ def verify_webhook_signature(
             if hmac.compare_digest(computed_sig.lower(), clean_sig.lower()):
                 return True
 
-        # 2. Secret token / Bearer verification
+        # 2. Secret token / Bearer / Basic auth verification
         if token_header:
             candidate = token_header.strip()
             if candidate.lower().startswith("bearer "):
                 candidate = candidate[7:].strip()
-            if secrets.compare_digest(candidate, secret):
+                if secrets.compare_digest(candidate, secret):
+                    return True
+            elif candidate.lower().startswith("basic "):
+                b64_part = candidate[6:].strip()
+                try:
+                    decoded = base64.b64decode(b64_part).decode("utf-8")
+                    if ":" in decoded:
+                        u, p = decoded.split(":", 1)
+                        if secrets.compare_digest(p, secret) or secrets.compare_digest(u, secret):
+                            return True
+                    elif secrets.compare_digest(decoded, secret):
+                        return True
+                except Exception:
+                    pass
+            elif secrets.compare_digest(candidate, secret):
                 return True
 
     return False
@@ -409,13 +428,33 @@ def verify_client_ip(client_ip: str | None, whitelisted_ips: list[str]) -> bool:
 
 
 def parse_smart_collect_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """Normalizes payload from ICICI CMS, HDFC CMS, or standard Smart Collect format."""
-    # Case-insensitive lookup map
-    lookup = {k.lower().replace("_", ""): v for k, v in payload.items()}
+    """Normalizes payload from ICICI CMS, HDFC CMS, or standard Smart Collect format.
+
+    Supports flat eCMS payloads as well as nested HDFC SmartHub Vyapar /
+    SmartGateway event structures (e.g. content.order, data, metadata).
+    """
+    # Build recursive case-insensitive lookup map across all nested levels
+    lookup: dict[str, Any] = {}
+
+    def _collect_keys(d: Any) -> None:
+        if not isinstance(d, dict):
+            return
+        for k, v in d.items():
+            norm_k = str(k).lower().replace("_", "").replace("-", "")
+            if norm_k not in lookup and v is not None:
+                lookup[norm_k] = v
+            if isinstance(v, dict):
+                _collect_keys(v)
+            elif isinstance(v, list):
+                for item in v:
+                    if isinstance(item, dict):
+                        _collect_keys(item)
+
+    _collect_keys(payload)
 
     def get_first(*keys: str) -> Any:
         for k in keys:
-            normalized = k.lower().replace("_", "")
+            normalized = k.lower().replace("_", "").replace("-", "")
             if normalized in lookup and lookup[normalized] is not None:
                 return lookup[normalized]
         return None
@@ -432,7 +471,29 @@ def parse_smart_collect_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "va_number",
         "virtualaccountnumber",
         "bene_acc_no",
+        "virtual_account_id",
+        "virtualaccountid",
+        "client_code",
+        "clientcode",
     )
+    if not van:
+        # Fallback check: order_id or customer_id prefixed with known bank VAN prefixes
+        candidate_ids = [
+            get_first("order_id", "orderid"),
+            get_first("customer_id", "customerid"),
+            get_first("reference_id", "referenceid"),
+        ]
+        known_prefixes = ("KARMH1", "KARMH2", "KARMN1", "KARMI", "KARMH")
+        for cid in candidate_ids:
+            if cid and isinstance(cid, str):
+                cid_upper = cid.strip().upper()
+                for pref in known_prefixes:
+                    if cid_upper.startswith(pref):
+                        van = cid_upper.split("_")[0].split("-")[0]
+                        break
+                if van:
+                    break
+
     if van:
         van = str(van).strip().upper()
 
@@ -444,6 +505,13 @@ def parse_smart_collect_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "transferamt",
         "paid_amount",
         "transfer_amount",
+        "order_amount",
+        "orderamount",
+        "effective_amount",
+        "effectiveamount",
+        "net_amount",
+        "netamount",
+        "charged_amount",
     )
     parsed_amount = None
     if raw_amount is not None:
@@ -462,7 +530,14 @@ def parse_smart_collect_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "bankrefno",
         "utrno",
         "txn_id",
+        "txnid",
         "reference_id",
+        "bank_txn_id",
+        "banktxnid",
+        "payment_id",
+        "paymentid",
+        "epg_txn_id",
+        "gateway_reference",
     )
     if utr:
         utr = str(utr).strip()
@@ -473,6 +548,7 @@ def parse_smart_collect_payload(payload: dict[str, Any]) -> dict[str, Any]:
             "bank_ref_no",
             "bankrefno",
             "rrn",
+            "bank_txn_id",
         )
         or utr
     )
@@ -492,9 +568,26 @@ def parse_smart_collect_payload(payload: dict[str, Any]) -> dict[str, Any]:
     )
 
     # Remitter / Payer info
-    payer_name = get_first("remitter_name", "payer_name", "remittername", "payername")
-    payer_account = get_first("remitter_account", "payer_account", "remitteraccount", "remitteraccno")
-    payer_ifsc = get_first("remitter_ifsc", "payer_ifsc", "remitterifsc", "remitterbank")
+    payer_name = get_first(
+        "remitter_name",
+        "payer_name",
+        "remittername",
+        "payername",
+        "customer_name",
+        "customername",
+    )
+    payer_account = get_first(
+        "remitter_account",
+        "payer_account",
+        "remitteraccount",
+        "remitteraccno",
+    )
+    payer_ifsc = get_first(
+        "remitter_ifsc",
+        "payer_ifsc",
+        "remitterifsc",
+        "remitterbank",
+    )
 
     return {
         "virtual_account_number": van,
