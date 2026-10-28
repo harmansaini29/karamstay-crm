@@ -873,3 +873,43 @@ def test_webhook_smarthub_vyapar_nested_event_payload(client, db_session, monkey
     assert data["invoice_id"] == invoice.id
     assert data["amount"] == 9200.0
 
+
+def test_webhook_smartgateway_failed_event_ignored(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "smart_collect_webhook_secret", "smarthub_fail_secret")
+    monkeypatch.setattr(settings, "smart_collect_whitelisted_ips", [])
+
+    owner = create_user(db_session, role_name="owner", email="owner_fail@example.com")
+    tenancy = _seed_tenancy_with_van(db_session, owner.id)
+    invoice = _seed_invoice(db_session, tenancy, amount="4000.00")
+
+    payload = {
+        "event": "ORDER_FAILED",
+        "content": {
+            "order": {
+                "order_id": f"{tenancy.virtual_account_number}_1729889999",
+                "amount": 4000.00,
+                "status": "FAILED",
+                "txn_id": "HDFC_TXN_FAIL_001",
+            }
+        },
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _generate_hmac_header(body, "smarthub_fail_secret")
+
+    response = client.post(
+        "/api/v1/payments/webhook/smart-collect",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Smarthub-Signature": sig,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "ignored"
+
+    # Invoice must remain unpaid
+    db_session.expire_all()
+    inv_check = db_session.get(Invoice, invoice.id)
+    assert inv_check.status == "pending"
+
+

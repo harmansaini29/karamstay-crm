@@ -589,6 +589,10 @@ def parse_smart_collect_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "remitterbank",
     )
 
+    # Event & Transaction Status (HDFC SmartGateway)
+    event_val = get_first("event", "event_type", "eventname", "notification_type")
+    status_val = get_first("status", "txn_status", "order_status", "payment_status")
+
     return {
         "virtual_account_number": van,
         "amount": parsed_amount,
@@ -598,6 +602,8 @@ def parse_smart_collect_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "payer_name": str(payer_name).strip() if payer_name else None,
         "payer_account": str(payer_account).strip() if payer_account else None,
         "payer_ifsc": str(payer_ifsc).strip().upper() if payer_ifsc else None,
+        "event": str(event_val).strip().upper() if event_val else None,
+        "status": str(status_val).strip().upper() if status_val else None,
     }
 
 
@@ -637,6 +643,19 @@ def process_smart_collect_webhook(
 
     # 3. Extract and Validate Required Payment Data
     parsed = parse_smart_collect_payload(payload)
+
+    # Discard non-credit / failure notification events gracefully with 200 OK
+    st = parsed.get("status")
+    evt = parsed.get("event")
+    failure_statuses = {"FAILED", "FAILURE", "CANCELLED", "DROPPED", "VOID", "AUTHORIZATION_FAILED", "REJECTED"}
+    if st in failure_statuses or (evt and any(kw in evt for kw in ("FAILED", "CANCELLED", "REJECTED"))):
+        logger.info("Smart Collect webhook acknowledged non-credit event=%s, status=%s", evt, st)
+        return {
+            "status": "ignored",
+            "message": f"Event status {st or evt} does not represent a successful credit",
+            "detail": f"Event status {st or evt} does not represent a successful credit",
+        }
+
     van = parsed["virtual_account_number"]
     amount = parsed["amount"]
     utr = parsed["utr_number"]
