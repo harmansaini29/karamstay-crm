@@ -39,7 +39,7 @@ class S3Storage:
         import boto3
         from botocore.client import Config
 
-        self._bucket = settings.aws_s3_bucket or "karamstay-prod-app-storage-907079642634"
+        self._bucket = settings.aws_s3_bucket or os.environ.get("AWS_S3_BUCKET", "karamstay-prod-app-storage")
         self._default_expires = settings.s3_presigned_url_expire_seconds
         self._fallback_local = LocalStorage()
 
