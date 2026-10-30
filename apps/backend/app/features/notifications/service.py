@@ -49,15 +49,16 @@ class NotificationService:
         recipients = self.repository.list_broadcast_recipients(payload.property_id)
         template_name = get_whatsapp_template(self.db, KEY_WHATSAPP_GENERIC_NOTICE_TEMPLATE)
         for tenant in recipients:
-            notify_whatsapp(
-                self.db,
-                user_id=tenant.user_id,
-                phone=tenant.phone,
-                notification_type="broadcast_notice",
-                title=payload.title,
-                message=payload.message,
-                template_name=template_name,
-            )
+            if payload.send_whatsapp:
+                notify_whatsapp(
+                    self.db,
+                    user_id=tenant.user_id,
+                    phone=tenant.phone,
+                    notification_type="broadcast_notice",
+                    title=payload.title,
+                    message=payload.message,
+                    template_name=template_name,
+                )
             if tenant.user_id is not None:
                 notify_push_all_devices(
                     self.db,
@@ -65,6 +66,16 @@ class NotificationService:
                     notification_type="broadcast_notice",
                     title=payload.title,
                     message=payload.message,
+                )
+                self.repository.add_notification(
+                    Notification(
+                        user_id=tenant.user_id,
+                        channel="in_app",
+                        notification_type="broadcast_notice",
+                        title=payload.title,
+                        message=payload.message,
+                        status="unread",
+                    )
                 )
 
         self.audit.record(

@@ -26,6 +26,7 @@ class BroadcastNoticeRequest(BaseModel):
     title: str = Field(min_length=2, max_length=160)
     message: str = Field(min_length=2, max_length=1000)
     property_id: int | None = None
+    send_whatsapp: bool = False
 
 
 class BroadcastNoticeResponse(BaseModel):

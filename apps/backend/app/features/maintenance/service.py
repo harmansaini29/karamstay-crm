@@ -7,7 +7,8 @@ from app.features.auth.models import User
 from app.features.maintenance.models import MaintenanceTicket
 from app.features.maintenance.repository import MaintenanceRepository
 from app.features.maintenance.schemas import MaintenanceTicketCreate, MaintenanceTicketUpdate
-from app.features.notifications.dispatcher import notify_push_all_devices, notify_whatsapp
+from app.features.notifications.dispatcher import notify_push_all_devices
+from app.features.notifications.models import Notification
 from app.features.payments.models import Expense
 from app.features.payments.repository import PaymentRepository
 from app.features.properties.repository import PropertyRepository
@@ -163,14 +164,7 @@ class MaintenanceService:
         if tenant is None:
             return
         message = f"Your maintenance request '{ticket.category}' is now '{new_status.replace('_', ' ')}'."
-        notify_whatsapp(
-            self.db,
-            user_id=tenant.user_id,
-            phone=tenant.phone,
-            notification_type="maintenance_status",
-            title="Maintenance Update",
-            message=message,
-        )
+        # Route routine maintenance updates via Free FCM Push + In-App Notification (zero WhatsApp cost)
         if tenant.user_id is not None:
             notify_push_all_devices(
                 self.db,
@@ -179,3 +173,14 @@ class MaintenanceService:
                 title="Maintenance Update",
                 message=message,
             )
+            self.db.add(
+                Notification(
+                    user_id=tenant.user_id,
+                    channel="in_app",
+                    notification_type="maintenance_status",
+                    title="Maintenance Update",
+                    message=message,
+                    status="unread",
+                )
+            )
+            self.db.commit()
